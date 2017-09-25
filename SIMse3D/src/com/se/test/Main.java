@@ -268,9 +268,12 @@ public class Main {
 		}
 		
 		cBuffer = BufferUtils.createFloatBuffer(7);
-		cBuffer.put(camera.m[3+0*4]);
+		/**cBuffer.put(camera.m[3+0*4]);
 		cBuffer.put(camera.m[3+1*4]);
-		cBuffer.put(camera.m[3+2*4]);
+		cBuffer.put(camera.m[3+2*4]);*/
+		cBuffer.put(position.getX());
+		cBuffer.put(position.getY());
+		cBuffer.put(position.getZ());
 		cBuffer.put(0);
 		cBuffer.put(rotation.getX());
 		cBuffer.put(rotation.getY());

@@ -16,7 +16,8 @@ __global __write_only int* result){
 	int4 color = (int4)(0,0,0,0);
 	float4 lightPos = (float4)(lp[0],lp[1],lp[2],0);
 	float4 p = (float4)(x,y,0,0);
-	float4 camera = (float4)(camMatrix[0],camMatrix[1],camMatrix[2],0);
+	float4 camerapos = (float4)(camMatrix[0],camMatrix[1],camMatrix[2],0.0f);
+	float4 camerarot = (float4)(camMatrix[4],camMatrix[5],0.0f,0.0f);
 	
 	if(zBuffer[zBufferIndex]==0){zBuffer[zBufferIndex]=-1000;}
 	
@@ -70,22 +71,31 @@ __global __write_only int* result){
 							+((float4)(rA[el+3],rA[el+4],rA[el+5],0)*a2)
 							+((float4)(rA[el+6],rA[el+7],rA[el+8],0)*a3);
 
-				float4 lightDir = normalize(lightPos-rP);
+				float4 lightDir = -normalize(rP-lightPos);
 				float distance = length(lightDir);
 				float attenuation = 1/((0.7+0.2+0.1)*distance*distance);
 				light += attenuation*(dot(lightDir,normal));
 				
-				//float specPower = 17;
-				//float specIntens = 2;
-				//float4 vertToCam = normalize(camera-rP);
-				//float4 lightReflect = normalize((-lightDir)-(2*dot((-lightDir),normal))*normal);
-				//float specS = dot(vertToCam, lightReflect);
-				//if(specS>0){
-				//	light += pow(specS, specPower)*specIntens*attenuation;
-				//}
+				float4 vertToCam = -normalize(normal-camerapos);
 				
-				int c = (int)( fmin(fmax(light,0),1) *255);
-				color = (int4)(c,c,c,0);
+				float d = 0.0f;
+				float p = 3.5f;
+				float s = 3.1f;
+				float sublight = 0.0f;
+				float gsub = pow(dot(vertToCam,(lightDir+(normal*d))),p)*s;
+				sublight += fmax(fmin(gsub,1),0);
+				
+				float specPower = 17;
+				float specIntens = 2;
+				float4 lightReflect = normalize((-lightDir)-(2*dot((-lightDir),normal))*normal);
+				float specS = dot(-vertToCam, lightReflect);
+				if(specS>0){
+					light += pow(specS, specPower)*specIntens*attenuation;
+				}
+				
+				int4 c1 = (int4)((int)(fmin(fmax(sublight*90+light*185,0.0f),255.0f)),(int)(fmin(fmax(sublight*60+light*198,0.0f),255.0f)),(int)(fmin(fmax(light*234,0.0f),255.0f)),0);
+				color = c1;
+				//color = (int4)(vertToCam.x*150,vertToCam.y*0,vertToCam.z*150 ,0);
 				
 				// FRAGMENT SHADER END
 			}
