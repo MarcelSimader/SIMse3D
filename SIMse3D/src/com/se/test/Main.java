@@ -88,7 +88,7 @@ public class Main {
 	private static FloatBuffer x1B,nB,vtCountB,cBuffer,lpBuffer,rB, cB;
 	private static IntBuffer rColorBuff, tBuffer;
 	
-	private static Texture tex;
+	private static Texture[] tex;
 
 	public static void main(String[] args) {
 		/** setup SIMMain and frame*/
@@ -123,15 +123,21 @@ public class Main {
 		}
 		
 		/** load textures*/
-		tex = new Texture();
-		tex.importTexture("src/res/textures/testmap1.png");
-		tBuffer = BufferUtils.createIntBuffer((tex.getImage().getHeight()*tex.getImage().getWidth()));
-		for(int y=0;y<tex.getImage().getHeight();y++){
-			for(int x=0;x<tex.getImage().getWidth();x++){
-				int rgb = tex.getImage().getRGB(x, y);
-				//System.out.println("bin: " +((rgb>>16)&0xFF)+"-"+((rgb>>8)&0xFF)+"-"+((rgb>>0)&0xFF));
-				tBuffer.put(rgb);
+		tex = new Texture[2];
+		tex[0] = new Texture();
+		tex[1] = new Texture();
+		tex[0].importTexture("src/res/textures/testmap.png");
+		tex[1].importTexture("src/res/textures/normal.png");
+		tBuffer = BufferUtils.createIntBuffer(tex.length+((tex.length)*(tex[0].getImage().getHeight()*tex[0].getImage().getWidth())));
+		for(int j=0; j<tex.length;j++){
+			for(int y=0;y<tex[j].getImage().getHeight();y++){
+				for(int x=0;x<tex[j].getImage().getWidth();x++){
+					int rgb = tex[j].getImage().getRGB(x, y);
+					//System.out.println("bin: " +((rgb>>16)&0xFF)+"-"+((rgb>>8)&0xFF)+"-"+((rgb>>0)&0xFF));
+					tBuffer.put(rgb);
+				}
 			}
+			tBuffer.put(0);
 		}
 		tBuffer.rewind();
 		
@@ -256,7 +262,7 @@ public class Main {
 		
 		//vertexDataArray[0].setPosition(new Vector3f(Math.sin(sim.getTicks()*0.01f),0,Math.cos((sim.getTicks()*0.01f))));
 		//vertexDataArray[1].setScale(new Vector3f(1f,Math.sin(sim.getTicks()*0.01f),1f));
-		vertexDataArray[2].setRotation(new Vector3f(Math.sin(sim.getTicks()*0.01f),Math.cos(sim.getTicks()*0.01f),Math.sin(sim.getTicks()*0.01f)));
+		//vertexDataArray[2].setRotation(new Vector3f(Math.sin(sim.getTicks()*0.01f),Math.cos(sim.getTicks()*0.01f),Math.sin(sim.getTicks()*0.01f)));
 	}
 	
 	private static void render(Thread t, Graphics g){
@@ -278,7 +284,7 @@ public class Main {
 		/** setup light*/
 		Matrix4f lightMatrix = new Matrix4f(light);
 		lightMatrix.translate(new Vector3f(1,0,0));
-		Matrix4f f1 = new Matrix4f();f1=f1.identity();f1.rotate(new Vector3f(0,0,1), sim.getTicks()*0.01f);
+		Matrix4f f1 = new Matrix4f();f1=f1.identity();f1.rotate(new Vector3f(0,1,0), sim.getTicks()*0.01f);
 		lightMatrix.mult(f1);
 		Vector3f transLight = new Vector3f(lightMatrix.m[3+0*4], lightMatrix.m[3+1*4], lightMatrix.m[3+2*4]);
 		

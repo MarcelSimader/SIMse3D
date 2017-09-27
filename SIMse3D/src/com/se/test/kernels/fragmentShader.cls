@@ -74,11 +74,32 @@ __global __write_only int* result){
 							+((float4)(rA[el+3],rA[el+4],rA[el+5],0)*a2)
 							+((float4)(rA[el+6],rA[el+7],rA[el+8],0)*a3);
 							
-				//float4 cP = ((float4)(x1A[el],x1A[el+1],x1A[el+6],0)*a1)
-				//			+((float4)(x1A[el+2],x1A[el+3],x1A[el+7],0)*a2)
-				//			+((float4)(x1A[el+4],x1A[el+5],x1A[el+8],0)*a3);
+				float4 cP = ((float4)(x1A[el],x1A[el+1],x1A[el+6],0)*a1)
+							+((float4)(x1A[el+2],x1A[el+3],x1A[el+7],0)*a2)
+							+((float4)(x1A[el+4],x1A[el+5],x1A[el+8],0)*a3);
 
+				
+				float3 uw = (float3)(normals[el+ 9]/(x1A[el+6]),normals[el+11]/(x1A[el+7]),normals[el+13]/(x1A[el+8]));
+				float3 vw = (float3)(normals[el+10]/(x1A[el+6]),normals[el+12]/(x1A[el+7]),normals[el+14]/(x1A[el+8]));
+				int u = (int)(((uw.x*a1)+(uw.y*a2)+(uw.z*a3))/w);
+				int v = (int)(((vw.x*a1)+(vw.y*a2)+(vw.z*a3))/w);
+				
+				int texture = 1;
+				int normalindex = (max(min(u,64),0))+(max(min(v,64),0)*64)+(64*64*texture);
+				int normaltex = tex[normalindex];
+				float4 normalrgb = (float4)((normaltex>>16)&0xFF,(normaltex>>8)&0xFF,(normaltex)&0xFF,0);
+				
+				float4 normalmap = ((2.0f*(normalrgb/255.0f))-1.0f);
+				
+				float4 n1 = (float4)(normal.y,normal.x,-normal.z,0);
+				float4 n2 = (float4)(-normal.x,normal.z,normal.y,0);
+				
 				float4 lightDir = -normalize(rP-lightPos);
+				
+				float ns = 0.7f;
+				normal=fmax(dot(lightDir,normal),0)*normalize(normalmap.x*n1+normalmap.y*n2+normalmap.z*normal)*ns+((1.0f-ns)*normal);
+				
+				
 				float distance = length(lightDir);
 				float attenuation = 1/((0.7+0.2+0.1)*distance*distance);
 				light += attenuation*(dot(lightDir,normal));
@@ -101,22 +122,17 @@ __global __write_only int* result){
 					//speclight += pow(specS, specPower)*specIntens*attenuation;
 				}
 				
+				texture = 0;
+				int index = (max(min(u,64),0))+(max(min(v,64),0)*64)+(64*64*texture);
+				int rgbtex = tex[index];
+				int4 rgb = (int4)((rgbtex>>16)&0xFF,(rgbtex>>8)&0xFF,(rgbtex)&0xFF,0);
+				
 				float4 c1 = (float4)(fmin(fmax(light,0.05f),3.0f),fmin(fmax(light,0.05f),3.0f),fmin(fmax(light,0.05f),3.0f),0.0f);
 				float4 c2 = (float4)(fmin(fmax(sublight,0.0f),1.0f),fmin(fmax(sublight,0.0f),1.0f),fmin(fmax(0.0f,0.0f),1.0f),0.0f)*255.0f;
 				float4 c3 = (float4)(fmin(fmax(speclight,0.0f),1.0f),fmin(fmax(speclight,0.0f),1.0f),fmin(fmax(speclight,0.0f),1.0f),0.0f)*255.0f;
 				
-				float3 uw = (float3)(normals[el+ 9]/(x1A[el+6]),normals[el+11]/(x1A[el+7]),normals[el+13]/(x1A[el+8]));
-				float3 vw = (float3)(normals[el+10]/(x1A[el+6]),normals[el+12]/(x1A[el+7]),normals[el+14]/(x1A[el+8]));
-				int u = (int)(((uw.x*a1)+(uw.y*a2)+(uw.z*a3))/w);
-				int v = (int)(((vw.x*a1)+(vw.y*a2)+(vw.z*a3))/w);
-				
-				int index = (max(min(u,64),0))+(max(min(v,64),0)*64);
-				
-				int rgbtex = tex[index];
-				int4 rgb = (int4)((rgbtex>>16)&0xFF,(rgbtex>>8)&0xFF,(rgbtex)&0xFF,0);
-				
 				color = (int4)((int)(fmax(fmin((c1.x*rgb.x+c2.x+c3.x),255),0)),(int)(fmax(fmin((c1.y*rgb.y+c2.y+c3.y),255),0)),(int)(fmax(fmin((c1.z*rgb.z+c2.z+c3.z),255),0)),0);
-				//color = (int4)(0,0,(int)(vertToCam.x*255.0f),0);
+				//color = (int4)((int)(normal.x*255.0f),(int)(normal.y*255.0f),(int)(normal.z*255.0f),0);
 				
 				// FRAGMENT SHADER END
 			}
