@@ -12,7 +12,7 @@ import com.se.simse.math.vector.Vector3f;
 
 public class OBJLoader {
 	
-	public static VertexData loadObj(String fileName){
+	public static VertexData loadObj(String fileName, boolean importUV){
 		FileReader fr = null;
 		try {
 			fr = new FileReader(new File(fileName));
@@ -24,10 +24,14 @@ public class OBJLoader {
 		List<Vector3f> normals = new ArrayList<Vector3f>();
 		List<Vector3f> indices = new ArrayList<Vector3f>();
 		List<Vector3f> nindices = new ArrayList<Vector3f>();
+		List<Vector3f> uv = new ArrayList<Vector3f>();
+		List<Vector3f> uvindices = new ArrayList<Vector3f>();
 		Vector3f[] verticesArray = null;
 		Vector3f[] normalsArray = null;
 		Vector3f[] indicesArray = null;
 		Vector3f[] nindicesArray = null;
+		Vector3f[] uvArray = null;
+		Vector3f[] uvindicesArray = null;
 		
 		try{
 			while(true){
@@ -46,8 +50,13 @@ public class OBJLoader {
 				}else if(line.startsWith("f ")){
 					Vector3f indice = new Vector3f(Float.parseFloat(currentLine1[1].split("/")[0]),Float.parseFloat(currentLine1[2].split("/")[0]),Float.parseFloat(currentLine1[3].split("/")[0])); 
 					indices.add(indice);
+					Vector3f uvindice = new Vector3f(Float.parseFloat(currentLine1[1].split("/")[1]),Float.parseFloat(currentLine1[2].split("/")[1]),Float.parseFloat(currentLine1[3].split("/")[1]));  
+					uvindices.add(uvindice);
 					Vector3f nindice = new Vector3f(Float.parseFloat(currentLine1[1].split("/")[2]),Float.parseFloat(currentLine1[2].split("/")[2]),Float.parseFloat(currentLine1[3].split("/")[2]));  
 					nindices.add(nindice);
+				}else if(line.startsWith("vt ") && importUV){
+					Vector3f uvCoord = new Vector3f(Float.parseFloat(currentLine1[1].split(" ")[0]),Float.parseFloat(currentLine1[2].split(" ")[0]),0); 
+					uv.add(uvCoord);
 				}
 			}
 			reader.close();
@@ -57,6 +66,8 @@ public class OBJLoader {
 		normalsArray = new Vector3f[normals.size()];
 		indicesArray = new Vector3f[indices.size()];
 		nindicesArray = new Vector3f[nindices.size()];
+		uvArray = new Vector3f[uv.size()];
+		uvindicesArray = new Vector3f[uvindices.size()];
 		
 		int vP = 0;
 		for(Vector3f vertex : vertices){
@@ -82,7 +93,24 @@ public class OBJLoader {
 			vP++;
 		}
 		
-		return new VertexData(verticesArray, normalsArray, indicesArray, nindicesArray);
+		if(importUV){
+			vP = 0;
+			for(Vector3f uvCoord : uv){
+				uvArray[vP] = new Vector3f(64,64,64).subN(uvCoord.multN(64f));
+				vP++;
+			}
+			vP = 0;
+			for(Vector3f uvindiceCoord : uvindices){
+				uvindicesArray[vP] = uvindiceCoord.subN(1f);
+				vP++;
+			}
+		}
+		
+		if(importUV){
+			return new VertexData(verticesArray, normalsArray, indicesArray, nindicesArray, uvindicesArray, uvArray);
+		}else{
+			return new VertexData(verticesArray, normalsArray, indicesArray, nindicesArray);
+		}
 	}
 
 }

@@ -2,6 +2,7 @@ package com.se.simse.graphics3D;
 
 import java.util.Random;
 
+import com.se.simse.math.vector.Vector2f;
 import com.se.simse.math.vector.Vector3f;
 
 /**
@@ -14,6 +15,8 @@ public class VertexData {
 	private Vector3f[] normal;
 	private Vector3f[] vindicies;
 	private Vector3f[] nindicies;
+	private Vector3f[] uv;
+	private Vector3f[] uvindices;
 	private Vector3f position;
 	private Vector3f scale;
 	private Vector3f rotation;
@@ -30,10 +33,6 @@ public class VertexData {
 		this.rotation = new Vector3f();
 	}
 	
-	/**
-	 * Instantiates a new {@code VertexData} object.
-	 * @param pos Positions of the vertices
-	 */
 	public VertexData(Vector3f[] pos){
 		this.pos = pos;
 		normal = new Vector3f[0];
@@ -43,11 +42,6 @@ public class VertexData {
 		this.rotation = new Vector3f();
 	}
 	
-	/**
-	 * Instantiates a new {@code VertexData} object.
-	 * @param pos Positions of the vertices
-	 * @param indicies Indicies of the vertices
-	 */
 	public VertexData(Vector3f[] pos, Vector3f[] indicies){
 		this.pos = pos;
 		normal = new Vector3f[0];
@@ -57,13 +51,6 @@ public class VertexData {
 		this.rotation = new Vector3f();
 	}
 	
-	/**
-	 * Instantiates a new {@code VertexData} object.
-	 * @param pos Positions of the vertices
-	 * @param normal Normals of the vertices
-	 * @param texture Texture coordinates of the vertices
-	 * @param indicies Indicies of the vertices
-	 */
 	public VertexData(Vector3f[] pos, Vector3f[] normal, Vector3f[] indicies){
 		this.pos = pos;
 		this.normal = normal;
@@ -81,6 +68,29 @@ public class VertexData {
 		this.position = new Vector3f();
 		this.scale = new Vector3f(1,1,1);
 		this.rotation = new Vector3f();
+	}
+	
+	public VertexData(Vector3f[] pos, Vector3f[] normal, Vector3f[] indicies, Vector3f[] nindicies, Vector3f[] uv){
+		this.pos = pos;
+		this.normal = normal;
+		this.vindicies = indicies;
+		this.nindicies = nindicies;
+		this.position = new Vector3f();
+		this.scale = new Vector3f(1,1,1);
+		this.rotation = new Vector3f();
+		this.uv = uv;
+	}
+	
+	public VertexData(Vector3f[] pos, Vector3f[] normal, Vector3f[] indicies, Vector3f[] nindicies, Vector3f[] uvindicies, Vector3f[] uv){
+		this.pos = pos;
+		this.normal = normal;
+		this.vindicies = indicies;
+		this.nindicies = nindicies;
+		this.position = new Vector3f();
+		this.scale = new Vector3f(1,1,1);
+		this.rotation = new Vector3f();
+		this.uv = uv;
+		this.uvindices = uvindicies;
 	}
 
 	public Vector3f[] getPos() {
@@ -137,6 +147,22 @@ public class VertexData {
 
 	public void setRotation(Vector3f rotation) {
 		this.rotation = rotation;
+	}
+	
+	public void setUV(Vector3f[] uv){
+		this.uv = uv;
+	}
+	
+	public Vector3f[] getUV(){
+		return uv;
+	}
+	
+	public void setUVIndices(Vector3f[] uvindices){
+		this.uvindices = uvindices;
+	}
+	
+	public Vector3f[] getUVIndices(){
+		return uvindices;
 	}
 	
 	/**
