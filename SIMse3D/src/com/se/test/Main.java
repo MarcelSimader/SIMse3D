@@ -126,7 +126,7 @@ public class Main {
 		tex = new Texture[2];
 		tex[0] = new Texture();
 		tex[1] = new Texture();
-		tex[0].importTexture("src/res/textures/testmap.png");
+		tex[0].importTexture("src/res/textures/testmap2.png");
 		tex[1].importTexture("src/res/textures/normal.png");
 		tBuffer = BufferUtils.createIntBuffer(tex.length+((tex.length)*(tex[0].getImage().getHeight()*tex[0].getImage().getWidth())));
 		for(int j=0; j<tex.length;j++){

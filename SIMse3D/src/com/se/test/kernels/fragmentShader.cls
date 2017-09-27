@@ -96,7 +96,7 @@ __global __write_only int* result){
 				
 				float4 lightDir = -normalize(rP-lightPos);
 				
-				float ns = 0.7f;
+				float ns = 0.8f;
 				normal=fmax(dot(lightDir,normal),0)*normalize(normalmap.x*n1+normalmap.y*n2+normalmap.z*normal)*ns+((1.0f-ns)*normal);
 				
 				
@@ -111,15 +111,15 @@ __global __write_only int* result){
 				float gsub = pow(length(-(lightDir+(normal*d))),p)*s;
 				sublight += fmax(fmin(gsub,1),0);
 				
-				float4 vertToCam = normalize(normal-camerapos);
+				float4 vertToCam = normalize(rP-camerapos);
 				
-				float specPower = 70;
-				float specIntens = 0.7;
+				float specPower = 40;
+				float specIntens = 1;
 				float4 lightReflect = normalize((-lightDir)-(2*dot((-lightDir),normal))*normal);
-				float specS = dot(vertToCam, lightReflect);
+				float specS = dot(-vertToCam, lightReflect);
 				float speclight = 0.0f;
 				if(specS>0){
-					//speclight += pow(specS, specPower)*specIntens*attenuation;
+					speclight += pow(specS, specPower)*specIntens*attenuation;
 				}
 				
 				texture = 0;
@@ -132,7 +132,6 @@ __global __write_only int* result){
 				float4 c3 = (float4)(fmin(fmax(speclight,0.0f),1.0f),fmin(fmax(speclight,0.0f),1.0f),fmin(fmax(speclight,0.0f),1.0f),0.0f)*255.0f;
 				
 				color = (int4)((int)(fmax(fmin((c1.x*rgb.x+c2.x+c3.x),255),0)),(int)(fmax(fmin((c1.y*rgb.y+c2.y+c3.y),255),0)),(int)(fmax(fmin((c1.z*rgb.z+c2.z+c3.z),255),0)),0);
-				//color = (int4)((int)(normal.x*255.0f),(int)(normal.y*255.0f),(int)(normal.z*255.0f),0);
 				
 				// FRAGMENT SHADER END
 			}
