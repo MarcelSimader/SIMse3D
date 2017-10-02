@@ -10,12 +10,14 @@ import java.awt.Cursor;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Point;
+import java.awt.PointerInfo;
 import java.awt.Robot;
 import java.awt.Toolkit;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
+import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.List;
@@ -25,8 +27,12 @@ import javax.swing.JFrame;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.LWJGLException;
 import org.lwjgl.PointerBuffer;
+import org.lwjgl.PointerWrapper;
 import org.lwjgl.opencl.CL;
 import org.lwjgl.opencl.CL10;
+import org.lwjgl.opencl.CL11;
+import org.lwjgl.opencl.CL12;
+import org.lwjgl.opencl.api.CLImageFormat;
 import org.lwjgl.opencl.CLCommandQueue;
 import org.lwjgl.opencl.CLContext;
 import org.lwjgl.opencl.CLDevice;
@@ -89,6 +95,9 @@ public class Main {
 	private static IntBuffer rColorBuff, tBuffer;
 	
 	private static Texture[] tex;
+	
+	private static long dt, dt1;
+	private static int amount, amount1;
 
 	public static void main(String[] args) {
 		/** setup SIMMain and frame*/
@@ -126,8 +135,8 @@ public class Main {
 		tex = new Texture[2];
 		tex[0] = new Texture();
 		tex[1] = new Texture();
-		tex[0].importTexture("src/res/textures/testmap2.png");
-		tex[1].importTexture("src/res/textures/normal.png");
+		tex[0].importTexture("src/res/textures/pack/197.png");
+		tex[1].importTexture("src/res/textures/pack/197_norm.png");
 		tBuffer = BufferUtils.createIntBuffer(tex.length+((tex.length)*(tex[0].getImage().getHeight()*tex[0].getImage().getWidth())));
 		for(int j=0; j<tex.length;j++){
 			for(int y=0;y<tex[j].getImage().getHeight();y++){
@@ -142,21 +151,22 @@ public class Main {
 		tBuffer.rewind();
 		
 		/** setup vertexData*/
-		vertexDataArray[0] = OBJLoader.loadObj("src/res/torusuv.obj", true);
-		vertexDataArray[0].setPosition(new Vector3f(0,0,3));
+		vertexDataArray[0] = OBJLoader.loadObj("src/res/cube.obj", true);
+		vertexDataArray[0].setScale(new Vector3f(3,3,3));
+		vertexDataArray[0].setPosition(new Vector3f(0,-3.5,0));
 		
-		vertexDataArray[1] = new VertexData(new Vector3f[]{new Vector3f(-1,0,-1),new Vector3f(-1,0,1),new Vector3f(1,0,-1),new Vector3f(1,0,1)}, 
+		/**vertexDataArray[1] = new VertexData(new Vector3f[]{new Vector3f(-1,0,-1),new Vector3f(-1,0,1),new Vector3f(1,0,-1),new Vector3f(1,0,1)}, 
 				new Vector3f[]{new Vector3f(0,1,0)},
 				new Vector3f[]{new Vector3f(0,1,3),new Vector3f(0,2,3)},
 				new Vector3f[]{new Vector3f(0,0,0),new Vector3f(0,0,0)},
 				new Vector3f[]{new Vector3f(0,1,3),new Vector3f(0,2,3)},
 				new Vector3f[]{new Vector3f(0,0,0),new Vector3f(64,0,0),new Vector3f(0,64,0),new Vector3f(64,64,0)});
 		vertexDataArray[1].setPosition(new Vector3f(0,-2,0));
-		vertexDataArray[1].setScale(new Vector3f(1,1,1));
+		vertexDataArray[1].setScale(new Vector3f(1,1,1));*/
 		
-		vertexDataArray[2] = OBJLoader.loadObj("src/res/smooth.obj", true);
-		vertexDataArray[2].setScale(new Vector3f(1,1,1));
-		vertexDataArray[2].setPosition(new Vector3f(0,2,4));
+		vertexDataArray[1] = OBJLoader.loadObj("src/res/smooth.obj", false);
+		vertexDataArray[1].setScale(new Vector3f(1,1,1));
+		vertexDataArray[1].setPosition(new Vector3f(0,2,4));
 		
 		/**vertexDataArray[2] = OBJLoader.loadObj("src/res/sphere.obj");
 		vertexDataArray[2].setPosition(new Vector3f(2,0,1));*/
@@ -191,7 +201,14 @@ public class Main {
 	    
 	    program = CL10.clCreateProgramWithSource(context, KernelLoader.loadKernel("src/com/se/test/kernels/fragmentShader.cls"), null);
 	    int error = CL10.clBuildProgram(program, devices.get(0), "", null);
+	    String log = program.getBuildInfoString(devices.get(0), CL10.CL_PROGRAM_BUILD_LOG);
+	    if(log.length()>1){
+		    System.out.println("\n------------BUILD LOG------------\n");
+			System.out.println(log);
+			System.out.println("---------------------------------\n");
+	    }
 		Util.checkCLError(error);
+
 		
 		globalWorkSize = BufferUtils.createPointerBuffer(dimensions);
 		globalWorkSize.put(0, (int)((sim.getDimension().getX())/res));
@@ -201,9 +218,9 @@ public class Main {
 		localWorkSize.put(0, (int)((32)));
 		localWorkSize.put(1, (int)((18)));
 		
-		resultColorM = CL10.clCreateBuffer(context, CL10.CL_MEM_READ_ONLY, (int) ((sim.getDimension().getX()*(int)sim.getDimension().getY())/res),null);
+		CLImageFormat format = new CLImageFormat(CL10.CL_INTENSITY, CL10.CL_UNORM_INT8);
+		resultColorM = CLMem.createImage2D(context, CL10.CL_MEM_READ_ONLY | CL10.CL_MEM_COPY_HOST_PTR, format, (long)(sim.getDimension().getX()/res), (long)(sim.getDimension().getY()/res), (long)(0), null, null);
 		rColorBuff = BufferUtils.createIntBuffer((int) ((sim.getDimension().getX()*(int)sim.getDimension().getY())/res));
-		zBuffer = new float[(int) ((sim.getDimension().getX()*sim.getDimension().getY())/res)];
 	}
 	
 	private static void kInput(int t, SIMKeyEvent k){
@@ -283,7 +300,7 @@ public class Main {
 
 		/** setup light*/
 		Matrix4f lightMatrix = new Matrix4f(light);
-		lightMatrix.translate(new Vector3f(1,0,0));
+		lightMatrix.translate(new Vector3f(1,-1,0));
 		Matrix4f f1 = new Matrix4f();f1=f1.identity();f1.rotate(new Vector3f(0,1,0), sim.getTicks()*0.01f);
 		lightMatrix.mult(f1);
 		Vector3f transLight = new Vector3f(lightMatrix.m[3+0*4], lightMatrix.m[3+1*4], lightMatrix.m[3+2*4]);
@@ -327,6 +344,7 @@ public class Main {
 		for(int vertexIndex=vertexDataArray.length-1;vertexIndex>=0;vertexIndex--){
 			VertexData vd = vertexDataArray[vertexIndex];
 			if(vd!=null){
+
 			
 			/** apply position matrices*/
 			Matrix4f[] newPositions = new Matrix4f[vd.getPos().length];
@@ -388,7 +406,7 @@ public class Main {
 			Triangle[] normaltriangles = new Triangle[vd.getvIndicies().length];
 			Triangle[] realtriangles = new Triangle[vd.getvIndicies().length];
 			Triangle[] textriangles = null;
-			if(vd.getUV()!=null){textriangles = new Triangle[vd.getUV().length];}
+			if(vd.getUV()!=null){textriangles = new Triangle[vd.getUVIndices().length];}else{textriangles = new Triangle[vd.getnIndicies().length];}
 			Vector3f[] wTri = new Vector3f[vd.getvIndicies().length];
 			
 			for(i=vd.getvIndicies().length-1;i>=0;i--){
@@ -405,6 +423,7 @@ public class Main {
 									  new Vector3f(newPositions[y].m[3+0*4],newPositions[y].m[3+1*4],newPositions[y].m[3+2*4]),
 									  new Vector3f(newPositions[z].m[3+0*4],newPositions[z].m[3+1*4],newPositions[z].m[3+2*4]));
 					triangles[i] = tr;
+					
 					tr = new Triangle(new Vector3f(realPositions[x].m[3+0*4],realPositions[x].m[3+1*4],realPositions[x].m[3+2*4]),
 							  		  new Vector3f(realPositions[y].m[3+0*4],realPositions[y].m[3+1*4],realPositions[y].m[3+2*4]),
 							  		  new Vector3f(realPositions[z].m[3+0*4],realPositions[z].m[3+1*4],realPositions[z].m[3+2*4]));
@@ -443,6 +462,21 @@ public class Main {
 				}else{
 					textriangles[i] = new Triangle(new Vector3f(1,0,0),new Vector3f(0,1,0),new Vector3f(0,0,1));
 				}
+				
+				float ratiox = 1280*0.5f;
+				float ratioy = 720*0.5f;
+				float x11 = (triangles[i].getP1().getX()*(ratiox/triangles[i].getP1().getZ()))+ratiox;
+				float y11 = (triangles[i].getP1().getY()*(ratioy/triangles[i].getP1().getZ()))+ratioy;
+				float x22 = (triangles[i].getP2().getX()*(ratiox/triangles[i].getP2().getZ()))+ratiox;
+				float y22 = (triangles[i].getP2().getY()*(ratioy/triangles[i].getP2().getZ()))+ratioy;
+				float x33 = (triangles[i].getP3().getX()*(ratiox/triangles[i].getP3().getZ()))+ratiox;
+				float y33 = (triangles[i].getP3().getY()*(ratioy/triangles[i].getP3().getZ()))+ratioy;
+				
+				Vector2f x1 = new Vector2f(x11/res, y11/res);
+				Vector2f x2 = new Vector2f(x22/res, y22/res);
+				Vector2f x3 = new Vector2f(x33/res, y33/res);
+				
+				float f = ((x2.getY()-x3.getY())*(x1.getX()-x3.getX())+(x3.getX()-x2.getX())*(x1.getY()-x3.getY()));
 			}
 			
 			/** create triangle-buffer and screen coordinates*/
@@ -592,12 +626,15 @@ public class Main {
 		nB.rewind();
 		rB.rewind();
 		cB.rewind();
-		
+
 		if(!wireFrame){
 			/** set kernel data*/
-			resultColorM = CL10.clCreateBuffer(context, CL10.CL_MEM_READ_ONLY, (int) ((4*((sim.getDimension().getX()*(int)sim.getDimension().getY())))/res),null);
+			
+			CLImageFormat format = new CLImageFormat(CL10.CL_RGBA, CL10.CL_UNORM_INT8);
+			
 			IntBuffer errB = BufferUtils.createIntBuffer(1);
 			int memPTR = CL10.CL_MEM_COPY_HOST_PTR;
+			
 			x1M = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, x1B, errB); Util.checkCLError(errB.get(0));
 			rM = CL10.clCreateBuffer(context,  CL10.CL_MEM_WRITE_ONLY | memPTR, rB, errB); Util.checkCLError(errB.get(0));
 			vtCountM = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, vtCountB, errB); Util.checkCLError(errB.get(0));
@@ -605,40 +642,59 @@ public class Main {
 			cM = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, cBuffer, errB); Util.checkCLError(errB.get(0));
 			lpM = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, lpBuffer, errB); Util.checkCLError(errB.get(0));
 			tM = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, tBuffer, errB); Util.checkCLError(errB.get(0));
-			cBM = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, cB, errB); Util.checkCLError(errB.get(0));
-			CLMem tempM = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, BufferUtils.createFloatBuffer((int)(((sim.getDimension().getX()*sim.getDimension().getY())/res))), errB); Util.checkCLError(errB.get(0));
-			
+			//cBM = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, cB, errB); Util.checkCLError(errB.get(0));
+			resultColorM = CLMem.createImage2D(context, CL10.CL_MEM_WRITE_ONLY, format, (long)(sim.getDimension().getX()/res), (long)(sim.getDimension().getY()/res), (long)(0), null, errB);Util.checkCLError(errB.get(0));
+			//CLMem zBM = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, BufferUtils.createFloatBuffer((int)((sim.getDimension().getX()/res)*(sim.getDimension().getX()/res))), errB); Util.checkCLError(errB.get(0));
 			kernel = CL10.clCreateKernel(program, "render", errB); Util.checkCLError(errB.get(0));
+			
 			CL10.clSetKernelArg(kernel, 0, x1M);
 			CL10.clSetKernelArg(kernel, 1, rM);
 			CL10.clSetKernelArg(kernel, 2, nM);
-			CL10.clSetKernelArg(kernel, 3, tempM);
-			CL10.clSetKernelArg(kernel, 4, vtCountM);
-			CL10.clSetKernelArg(kernel, 5, cM);
-			CL10.clSetKernelArg(kernel, 6, lpM);
-			CL10.clSetKernelArg(kernel, 7, tM);
-			CL10.clSetKernelArg(kernel, 8, cBM);
-			CL10.clSetKernelArg(kernel, 9, resultColorM);
+			CL10.clSetKernelArg(kernel, 3, vtCountM);
+			CL10.clSetKernelArg(kernel, 4, cM);
+			CL10.clSetKernelArg(kernel, 5, lpM);
+			CL10.clSetKernelArg(kernel, 6, tM);
+			CL10.clSetKernelArg(kernel, 7, resultColorM);
+			//CL10.clSetKernelArg(kernel, 9, zBM);
 			
+			long t1 = System.currentTimeMillis();
 			int err = CL10.clEnqueueNDRangeKernel(queue, kernel, dimensions, null, globalWorkSize, localWorkSize, null, null);Util.checkCLError(err);
-			err = CL10.clEnqueueReadBuffer(queue, resultColorM, CL10.CL_TRUE, 0, rColorBuff, null, null);Util.checkCLError(err);
 			CL10.clFinish(queue);
+			long t2 = System.currentTimeMillis();
+			dt+=t2-t1;
+			amount++;
+			if(sim.getTicks()%10==0){
+				System.out.println("render: " + dt/amount+"ms");dt=0;amount=0;
+			}
 			
-			CL10.clReleaseKernel(kernel);
-			CL10.clReleaseMemObject(x1M);
-			CL10.clReleaseMemObject(vtCountM);
-			CL10.clReleaseMemObject(tempM);
+			PointerBuffer origin = new PointerBuffer(3);
+			origin.put(0l);origin.put(0l);origin.put(0l);
+			origin.rewind();
+			PointerBuffer region = new PointerBuffer(3);
+			region.put((long)(sim.getDimension().getX()/res));region.put((long)(sim.getDimension().getY()/res));region.put(1l);
+			region.rewind();
+			
+			err = CL10.clEnqueueReadImage(queue, resultColorM, CL10.CL_TRUE, origin, region, (long)(0), (long)(0), rColorBuff, null, null);Util.checkCLError(err);
+			CL10.clFinish(queue);
+
+
+			CL10.clReleaseMemObject(rM);
 			CL10.clReleaseMemObject(nM);
+			CL10.clReleaseMemObject(vtCountM);
 			CL10.clReleaseMemObject(cM);
 			CL10.clReleaseMemObject(lpM);
-			CL10.clReleaseMemObject(rM);
+			CL10.clReleaseMemObject(tM);
+			//CL10.clReleaseMemObject(cBM);
 			CL10.clReleaseMemObject(resultColorM);
-
+			CL10.clReleaseKernel(kernel);
+			
+			t1 = System.currentTimeMillis();
 			/** draw pixels*/
 			bf = new BufferedImage((int)(sim.getDimension().getX()/res),(int)(sim.getDimension().getY()/res),BufferedImage.TYPE_INT_RGB);int rgb;
 			for(int yi=0;yi<bf.getHeight();yi++){
 				for(int xi=0;xi<bf.getWidth();xi++){
 					rgb = rColorBuff.get(xi+yi*bf.getWidth());
+					//System.out.println(rgb);
 					bf.setRGB(xi, yi, rgb);
 				}
 			}
@@ -646,6 +702,12 @@ public class Main {
 			if(bf!=null){
 			((Graphics2D) g).drawRenderedImage(bf, AffineTransform.getScaleInstance(
 					((sim.getDimension().getX()/bf.getWidth())*1.33f), ((sim.getDimension().getY()/bf.getHeight())*1.33f)));
+			}
+			t2 = System.currentTimeMillis();
+			dt1+=t2-t1;
+			amount1++;
+			if(sim.getTicks()%10==0){
+				System.out.println("draw image: " + dt1/amount1 +"ms");dt1=0;amount1=0;
 			}
 		}
 

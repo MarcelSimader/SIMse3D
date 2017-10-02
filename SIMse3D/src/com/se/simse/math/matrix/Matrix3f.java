@@ -41,6 +41,18 @@ public class Matrix3f {
 		return ide;
 	}
 	
+	public float determinant(Matrix3f a){
+		return (a.m[0+0*size]*(a.m[1+1*size]*a.m[2+2*size]-a.m[2+1*size]*a.m[1+2*size]))-
+			   (a.m[1+0*size]*(a.m[0+1*size]*a.m[2+2*size]-a.m[2+1*size]*a.m[0+2*size]))-
+			   (a.m[2+0*size]*(a.m[0+1*size]*a.m[1+2*size]-a.m[1+1*size]*a.m[0+2*size]));
+	}
+	
+	public float determinant(){
+			return (m[0+0*size]*(m[1+1*size]*m[2+2*size]-m[2+1*size]*m[1+2*size]))-
+				   (m[1+0*size]*(m[0+1*size]*m[2+2*size]-m[2+1*size]*m[0+2*size]))-
+				   (m[2+0*size]*(m[0+1*size]*m[1+2*size]-m[1+1*size]*m[0+2*size]));
+	}
+	
 	public void add(Matrix3f a){
 		for(int i=0;i<size*size;i++){
 			m[i]+=a.m[i];

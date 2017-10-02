@@ -4,6 +4,7 @@ import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.text.DecimalFormat;
 
 import javax.swing.JFrame;
 
@@ -59,7 +60,8 @@ public class DrawUtils {
 		g.setColor(new Color(0,0,0,100));
 		g.fillRect((int)s.getDimension().getX()-200, 0, 200, 85);
 		g.setColor(Color.white);
-		g.drawString("FPS: " + s.getFPS(), (int)s.getDimension().getX()-190, 55);
+		DecimalFormat df = new DecimalFormat("#.##");
+		g.drawString("FPS: " + df.format(s.getFPS()), (int)s.getDimension().getX()-190, 55);
 		g.drawString("TICKS/S: " + 1000f/s.getStepTimeMillis(), (int)s.getDimension().getX()-190, 75);
 	}
 	

@@ -32,7 +32,7 @@ public class SIMMain {
 	private long currentTime, lastTime, delta, timePassed;
 	private float stepTime;
 	private int ticks, seconds;
-	private float FPS, lastTimeFPS, currentTimeFPS, avgFPS;
+	private double FPS, lastTimeFPS, currentTimeFPS, avgFPS;
 	private int rendTicks;
 	
 	private Vector2f dim;
@@ -79,8 +79,8 @@ public class SIMMain {
 				}
 				lastTimeFPS = currentTimeFPS;
 				currentTimeFPS = System.nanoTime();
-				if(rendTicks<10){avgFPS += 1000000000f/(currentTime-lastTimeFPS);
-				}else{FPS=avgFPS/10;avgFPS = 0f;rendTicks=0;}
+				if(rendTicks<5){avgFPS += 1000000000d/(currentTimeFPS-lastTimeFPS);
+				}else{FPS=avgFPS/5.0d;avgFPS = 0d;rendTicks=0;}
 				rendTicks++;
 			}
 			System.out.println("[SIMMain] Stopped Render Thread: '" + t1.getName()+ "'");
@@ -247,7 +247,7 @@ public class SIMMain {
 		return seconds;
 	}
 	
-	public float getFPS(){
+	public double getFPS(){
 		return FPS;
 	}
 
