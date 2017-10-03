@@ -17,6 +17,8 @@ import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
+import java.awt.image.DataBuffer;
+import java.awt.image.Raster;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
@@ -88,7 +90,7 @@ public class Main {
 	private static CLCommandQueue queue;
 	private static CLKernel kernel;
 	private static CLProgram program;
-	private final static int dimensions = 2;
+	private final static int dimensions = 1;
 	private static PointerBuffer globalWorkSize, localWorkSize;
 	private static CLMem x1M,resultColorM,vtCountM,nM,cM,lpM,rM, tM, cBM;
 	private static FloatBuffer x1B,nB,vtCountB,cBuffer,lpBuffer,rB, cB;
@@ -164,7 +166,7 @@ public class Main {
 		vertexDataArray[1].setPosition(new Vector3f(0,-2,0));
 		vertexDataArray[1].setScale(new Vector3f(1,1,1));*/
 		
-		vertexDataArray[1] = OBJLoader.loadObj("src/res/smooth.obj", false);
+		vertexDataArray[1] = OBJLoader.loadObj("src/res/teapot.obj", false);
 		vertexDataArray[1].setScale(new Vector3f(1,1,1));
 		vertexDataArray[1].setPosition(new Vector3f(0,2,4));
 		
@@ -199,7 +201,7 @@ public class Main {
 	    												  +devices.get(0).getInfoSizeArray(CL10.CL_DEVICE_MAX_WORK_ITEM_SIZES)[1]+" / "
 	    											      +devices.get(0).getInfoSizeArray(CL10.CL_DEVICE_MAX_WORK_ITEM_SIZES)[2]);
 	    
-	    program = CL10.clCreateProgramWithSource(context, KernelLoader.loadKernel("src/com/se/test/kernels/fragmentShader.cls"), null);
+	    program = CL10.clCreateProgramWithSource(context, KernelLoader.loadKernel("src/com/se/test/kernels/fragmentShaderTest.cls"), null);
 	    int error = CL10.clBuildProgram(program, devices.get(0), "", null);
 	    String log = program.getBuildInfoString(devices.get(0), CL10.CL_PROGRAM_BUILD_LOG);
 	    if(log.length()>1){
@@ -208,15 +210,9 @@ public class Main {
 			System.out.println("---------------------------------\n");
 	    }
 		Util.checkCLError(error);
-
 		
-		globalWorkSize = BufferUtils.createPointerBuffer(dimensions);
-		globalWorkSize.put(0, (int)((sim.getDimension().getX())/res));
-		globalWorkSize.put(1, (int)((sim.getDimension().getY())/res));
-		
-		localWorkSize = BufferUtils.createPointerBuffer(dimensions);
-		localWorkSize.put(0, (int)((32)));
-		localWorkSize.put(1, (int)((18)));
+		//localWorkSize = BufferUtils.createPointerBuffer(dimensions);
+		//localWorkSize.put(0, (int)(8));
 		
 		CLImageFormat format = new CLImageFormat(CL10.CL_INTENSITY, CL10.CL_UNORM_INT8);
 		resultColorM = CLMem.createImage2D(context, CL10.CL_MEM_READ_ONLY | CL10.CL_MEM_COPY_HOST_PTR, format, (long)(sim.getDimension().getX()/res), (long)(sim.getDimension().getY()/res), (long)(0), null, null);
@@ -312,6 +308,9 @@ public class Main {
 				vertices+=vd.getvIndicies().length;
 			}
 		}
+		
+		globalWorkSize = BufferUtils.createPointerBuffer(dimensions);
+		globalWorkSize.put(0, (int)(vertices));
 		
 		cBuffer = BufferUtils.createFloatBuffer(7);
 		/**cBuffer.put(camera.m[3+0*4]);
@@ -428,6 +427,7 @@ public class Main {
 							  		  new Vector3f(realPositions[y].m[3+0*4],realPositions[y].m[3+1*4],realPositions[y].m[3+2*4]),
 							  		  new Vector3f(realPositions[z].m[3+0*4],realPositions[z].m[3+1*4],realPositions[z].m[3+2*4]));
 					realtriangles[i] = tr;
+					
 					tr = new Triangle(new Vector3f(camPositions[x].m[3+0*4],camPositions[x].m[3+1*4],camPositions[x].m[3+2*4]),
 							   		  new Vector3f(camPositions[y].m[3+0*4],camPositions[y].m[3+1*4],camPositions[y].m[3+2*4]),
 							   		  new Vector3f(camPositions[z].m[3+0*4],camPositions[z].m[3+1*4],camPositions[z].m[3+2*4]));
@@ -644,7 +644,7 @@ public class Main {
 			tM = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, tBuffer, errB); Util.checkCLError(errB.get(0));
 			//cBM = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, cB, errB); Util.checkCLError(errB.get(0));
 			resultColorM = CLMem.createImage2D(context, CL10.CL_MEM_WRITE_ONLY, format, (long)(sim.getDimension().getX()/res), (long)(sim.getDimension().getY()/res), (long)(0), null, errB);Util.checkCLError(errB.get(0));
-			//CLMem zBM = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, BufferUtils.createFloatBuffer((int)((sim.getDimension().getX()/res)*(sim.getDimension().getX()/res))), errB); Util.checkCLError(errB.get(0));
+			CLMem zBM = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, BufferUtils.createFloatBuffer((int)((sim.getDimension().getX()/res)*(sim.getDimension().getX()/res))), errB); Util.checkCLError(errB.get(0));
 			kernel = CL10.clCreateKernel(program, "render", errB); Util.checkCLError(errB.get(0));
 			
 			CL10.clSetKernelArg(kernel, 0, x1M);
@@ -655,10 +655,10 @@ public class Main {
 			CL10.clSetKernelArg(kernel, 5, lpM);
 			CL10.clSetKernelArg(kernel, 6, tM);
 			CL10.clSetKernelArg(kernel, 7, resultColorM);
-			//CL10.clSetKernelArg(kernel, 9, zBM);
+			CL10.clSetKernelArg(kernel, 8, zBM);
 			
 			long t1 = System.currentTimeMillis();
-			int err = CL10.clEnqueueNDRangeKernel(queue, kernel, dimensions, null, globalWorkSize, localWorkSize, null, null);Util.checkCLError(err);
+			int err = CL10.clEnqueueNDRangeKernel(queue, kernel, dimensions, null, globalWorkSize, null, null, null);Util.checkCLError(err);
 			CL10.clFinish(queue);
 			long t2 = System.currentTimeMillis();
 			dt+=t2-t1;
@@ -684,6 +684,7 @@ public class Main {
 			CL10.clReleaseMemObject(cM);
 			CL10.clReleaseMemObject(lpM);
 			CL10.clReleaseMemObject(tM);
+			CL10.clReleaseMemObject(zBM);
 			//CL10.clReleaseMemObject(cBM);
 			CL10.clReleaseMemObject(resultColorM);
 			CL10.clReleaseKernel(kernel);
@@ -691,13 +692,14 @@ public class Main {
 			t1 = System.currentTimeMillis();
 			/** draw pixels*/
 			bf = new BufferedImage((int)(sim.getDimension().getX()/res),(int)(sim.getDimension().getY()/res),BufferedImage.TYPE_INT_RGB);int rgb;
+			Raster b = bf.getRaster();
 			for(int yi=0;yi<bf.getHeight();yi++){
 				for(int xi=0;xi<bf.getWidth();xi++){
-					rgb = rColorBuff.get(xi+yi*bf.getWidth());
-					//System.out.println(rgb);
-					bf.setRGB(xi, yi, rgb);
+					int i = xi+yi*bf.getWidth();
+					b.getDataBuffer().setElem(i, rColorBuff.get(i));
 				}
 			}
+			bf.getRaster().setDataElements(0, 0, b);
 			
 			if(bf!=null){
 			((Graphics2D) g).drawRenderedImage(bf, AffineTransform.getScaleInstance(
