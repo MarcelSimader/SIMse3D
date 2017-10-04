@@ -709,7 +709,7 @@ public class Main {
 			dt1+=t2-t1;
 			amount1++;
 			if(sim.getTicks()%10==0){
-				System.out.println("draw image: " + dt1/amount1 +"ms");dt1=0;amount1=0;
+			//	System.out.println("draw image: " + dt1/amount1 +"ms");dt1=0;amount1=0;
 			}
 		}
 

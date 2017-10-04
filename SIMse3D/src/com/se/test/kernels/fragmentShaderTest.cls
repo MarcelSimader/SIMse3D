@@ -23,6 +23,7 @@ __global float* zBuffer){
 	float ratiox = 1280*0.5f;
 	float ratioy = 720*0.5f;
 	float res = vertCount[1];
+	float2 ratio = (float2)(1280/res, 720/res);
 	
 	float3 lightPos = (float3)(lp[0],lp[1],lp[2]);
 	
@@ -41,9 +42,10 @@ __global float* zBuffer){
 	float bias1 = isTopLeft(x2,x0) ? 0 : -1;
 	float bias2 = isTopLeft(x0,x1) ? 0 : -1;
 	
+	if(!(x0.x<0 && x1.x<0 && x2.x<0 && x0.y<0 && x1.y<0 && x2.y<0)&&!(x0.x>ratio.x && x1.x>ratio.x && x2.x>ratio.x && x0.y>ratio.y && x1.y>ratio.y && x2.y>ratio.y)){
 	for(float y=sy.x;y<sy.y;y+=1/res){
 		for(float x=sx.x;x<sx.y;x+=1/res){	
-			int zBufferIndex = (x+y*(1280/res));
+			int zBufferIndex = (int)(floor(x)+floor(y)*(1280/res));
 			float2 p = (float2)(x,y);
 			
 			float w0 = orient2d(x1,x2,p)+bias0;
@@ -64,19 +66,24 @@ __global float* zBuffer){
 				float a1 = fabs((cross(f2,f0)/a).z);
 				float a2 = fabs((cross(f0,f1)/a).z);
 				
+				//printf("a0 %f \n", a);
+				
 				float z = ((x1A[index+6]*a0)+(x1A[index+7]*a1)+(x1A[index+8]*a2));
 				
-				if(zBuffer[zBufferIndex]==0){zBuffer[zBufferIndex]=-1000;}
-				if(zBuffer[zBufferIndex]<z){
+				if(zBuffer[zBufferIndex]==0){zBuffer[zBufferIndex]=-200;}
+				if(zBuffer[zBufferIndex]<=z){
 					zBuffer[zBufferIndex]=z;
 					float3 n = ((float3)(normal[index],normal[index+1],normal[index+2])*a0)+((float3)(normal[index+3],normal[index+4],normal[index+5])*a1)+((float3)(normal[index+6],normal[index+7],normal[index+8])*a2);
 					float3 tri = ((float3)(rA[index],rA[index+1],rA[index+2])*a0)+((float3)(rA[index+3],rA[index+4],rA[index+5])*a1)+((float3)(rA[index+6],rA[index+7],rA[index+8])*a2);
 					
-					float light = dot(lightPos-tri,n)*0.5f;
+					float lightDistance = fast_length(lightPos-tri);
+					float attenuation = 1.0f/((lightDistance*lightDistance*0.1f)+(0.01*lightDistance)+0.5f);
+					float light = attenuation*dot(lightPos-tri,n)*0.1f;
 					
-					write_imagef(result,(int2)(x,y),(float4)(light,0.0f,0.0f,0.0f));
+					write_imagef(result,(int2)(x,y),(float4)(light,0,0,0.0f));
 				}
 			}
 		}
+	}
 	}
 }
