@@ -10,7 +10,11 @@ public class Triangle {
 	private Vector3f p2;
 	private Vector3f p3;
 	
-	public Triangle(){}
+	public Triangle(){
+		p1 = new Vector3f();
+		p2 = new Vector3f();
+		p3 = new Vector3f();
+	}
 	
 	public Triangle(Vector3f p1,Vector3f p2,Vector3f p3){
 		this.p1 = p1;

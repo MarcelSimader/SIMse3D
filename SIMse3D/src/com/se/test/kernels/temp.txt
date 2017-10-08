@@ -15,6 +15,7 @@ __kernel void render(
 __constant __read_only float* x1A, 
 __constant __read_only float* rA, 
 __constant __read_only float* normal,
+__constant __read_only float* vertCount,
 __constant __read_only float* camMatrix,
 __constant __read_only float* lp,
 __constant __read_only int* tex,
@@ -25,7 +26,7 @@ __global float* zBuffer){
 	
 	float ratiox = 1280*0.5f;
 	float ratioy = 720*0.5f;
-	float res = camMatrix[3];
+	float res = vertCount[1];
 	float2 ratio = (float2)(1280/res, 720/res);
 	
 	float3 lightPos = (float3)(lp[0],lp[1],lp[2]);
@@ -39,10 +40,6 @@ __global float* zBuffer){
 	float2 x1 = v1/res;
 	float2 x2 = v2/res;
 	
-	float A01 = (x0.y - x1.y)/res; float B01 = (x1.x - x0.x)/res;
-	float A12 = (x1.y - x2.y)/res; float B12 = (x2.x - x1.x)/res;
-	float A20 = (x2.y - x0.y)/res; float B20 = (x0.x - x2.x)/res;
-	
 	int2 sx = clamp((int2)(fmin(x0.x,fmin(x1.x,x2.x)),fmax(x0.x,fmax(x1.x,x2.x))),0,(1280/res));
 	int2 sy = clamp((int2)(fmin(x0.y,fmin(x1.y,x2.y)),fmax(x0.y,fmax(x1.y,x2.y))),0,(720/res));
 	
@@ -50,25 +47,19 @@ __global float* zBuffer){
 	float bias1 = isTopLeft(x2,x0) ? 0 : -1;
 	float bias2 = isTopLeft(x0,x1) ? 0 : -1;
 	
-	float2 p = (float2)(sx.x,sy.x);
-	
-	float w0_row = orient2d(x1,x2,p)+bias0;
-	float w1_row = orient2d(x2,x0,p)+bias1;
-	float w2_row = orient2d(x0,x1,p)+bias2;
+	float C
 	
 	if(!(x0.x<0 && x1.x<0 && x2.x<0 && x0.y<0 && x1.y<0 && x2.y<0)&&!(x0.x>ratio.x && x1.x>ratio.x && x2.x>ratio.x && x0.y>ratio.y && x1.y>ratio.y && x2.y>ratio.y)){
 	for(float j=sy.x;j<sy.y;j+=1/res){
-		float w0 = w0_row;
-		float w1 = w1_row;
-		float w2 = w2_row;
-		
 		for(float i=sx.x;i<sx.y;i+=1/res){	
-	
-			//start lighting
+			int zBufferIndex = (int)(floor(i)+floor(j)*(1280/res));
+			float2 p = (float2)(i,j);
+			
+
+			float w0 = orient2d(x1,x2,p)+bias0;
+			float w1 = orient2d(x2,x0,p)+bias1;
+			float w2 = orient2d(x0,x1,p)+bias2;
 			if(w0<=0.0f && w1<=0.0f && w2<=0.0f){
-				int zBufferIndex = (int)(floor(i)+floor(j)*(1280/res));
-				p = (float2)(i,j);
-				
 				float a = area(x0,x1,x2);
 				float a0 = area(p,x1,x2)/a;
 				float a1 = area(x0,p,x2)/a;
@@ -97,22 +88,11 @@ __global float* zBuffer){
 					
 					float3 reflect = -toLight-(2*dot(-toLight,n)*n);
 					float specF = fmin(fmax(dot(toCam,reflect),0),1);
-					float spec = attenuation*0.5f*pow(specF,15);
-					
+					float spec = attenuation*0.5f*pow(specF,10);
 					write_imagef(result,(int2)(i,j),(float4)(spec,light+spec,spec,0));
 				}
 			}
-			
-			//end lighting
-			
-			w0 += A12;
-			w1 += A20;
-			w2 += A01;
 		}
-		
-		w0_row += B12;
-		w1_row += B20;
-		w2_row += B01;
 	}
 	}
 }

@@ -4,22 +4,20 @@ import static com.se.simse.graphics.DrawUtils.drawDebug;
 import static com.se.simse.graphics.DrawUtils.fillScreen;
 
 import java.awt.AWTException;
+import java.awt.AlphaComposite;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Cursor;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Point;
-import java.awt.PointerInfo;
 import java.awt.Robot;
 import java.awt.Toolkit;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
-import java.awt.image.DataBuffer;
 import java.awt.image.Raster;
-import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.List;
@@ -29,11 +27,8 @@ import javax.swing.JFrame;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.LWJGLException;
 import org.lwjgl.PointerBuffer;
-import org.lwjgl.PointerWrapper;
 import org.lwjgl.opencl.CL;
 import org.lwjgl.opencl.CL10;
-import org.lwjgl.opencl.CL11;
-import org.lwjgl.opencl.CL12;
 import org.lwjgl.opencl.api.CLImageFormat;
 import org.lwjgl.opencl.CLCommandQueue;
 import org.lwjgl.opencl.CLContext;
@@ -67,15 +62,15 @@ public class Main {
 	private static SIMMain sim;
 	private static Matrix4f proj = new Matrix4f();
 	 
-	static VertexData[] vertexDataArray = new VertexData[32];
-	static BufferedImage bf;
+	static VertexData[] vertexDataArray = new VertexData[64];
+	static BufferedImage bf, wbf;
 	private static float res = 2f;
 	private static Cursor cursor;
 
-	static float[] zBuffer;
 	static int i = 0;
 	
 	private static boolean wireFrame = false;
+	private static boolean wireFrameOnly = false;
 	private static Vector2f rotation = new Vector2f();
 	private static float transSpeed = 0.02f;
 	private static Vector3f position = new Vector3f();
@@ -88,20 +83,21 @@ public class Main {
 	private static CLPlatform platform;
 	private static List<CLDevice> devices;
 	private static CLCommandQueue queue;
-	private static CLKernel kernel;
-	private static CLProgram program;
+	private static CLKernel[] kernel = new CLKernel[2];
+	private static String[] programLoc = new String[2];
+	private static CLProgram[] program = new CLProgram[2];
 	private final static int dimensions = 1;
-	private static PointerBuffer globalWorkSize, localWorkSize;
-	private static CLMem x1M,resultColorM,vtCountM,nM,cM,lpM,rM, tM, cBM;
-	private static FloatBuffer x1B,nB,vtCountB,cBuffer,lpBuffer,rB, cB;
-	private static IntBuffer rColorBuff, tBuffer;
+	private static PointerBuffer globalWorkSize;
+	private static CLMem viewMem,resultColorM,normalMem,infoMem,lightPositionMem,triangleMem, textureMem;
+	private static FloatBuffer viewBuffer,normalBuffer,infoBuffer,lightPosBuffer,triangleBuffer;
+	private static IntBuffer resultColorBuffer, textureBuffer;
 	
 	private static Texture[] tex;
 	
 	private static long dt, dt1;
 	private static int amount, amount1;
 
-	public static void main(String[] args) {
+	public static void main(String[] args) throws Exception {
 		/** setup SIMMain and frame*/
 		sim = new SIMMain("Test", (Thread thread) -> update(thread), (Thread thread, Graphics graphics) -> render(thread, graphics));
 		sim.setStepTimeSeconds(0.01f);
@@ -123,15 +119,11 @@ public class Main {
 		f.setVisible(true);
 		
 		/** setup GUI*/
-		SIMPanel panel = new SIMPanel(100,100,1000,300,new Color(0.1f,1f,0.2f,0.3f), true);
+		//SIMPanel panel = new SIMPanel(100,100,1000,300,new Color(0.1f,1f,0.2f,0.3f), true);
 		//sim.addGUIElement(panel);
 		
 		/** init OpenCL*/
-		try {
-			initOpenCL();
-		} catch (LWJGLException e) {
-			e.printStackTrace();
-		}
+		initOpenCL();
 		
 		/** load textures*/
 		tex = new Texture[2];
@@ -139,21 +131,20 @@ public class Main {
 		tex[1] = new Texture();
 		tex[0].importTexture("src/res/textures/pack/197.png");
 		tex[1].importTexture("src/res/textures/pack/197_norm.png");
-		tBuffer = BufferUtils.createIntBuffer(tex.length+((tex.length)*(tex[0].getImage().getHeight()*tex[0].getImage().getWidth())));
+		textureBuffer = BufferUtils.createIntBuffer(tex.length+((tex.length)*(tex[0].getImage().getHeight()*tex[0].getImage().getWidth())));
 		for(int j=0; j<tex.length;j++){
 			for(int y=0;y<tex[j].getImage().getHeight();y++){
 				for(int x=0;x<tex[j].getImage().getWidth();x++){
 					int rgb = tex[j].getImage().getRGB(x, y);
-					//System.out.println("bin: " +((rgb>>16)&0xFF)+"-"+((rgb>>8)&0xFF)+"-"+((rgb>>0)&0xFF));
-					tBuffer.put(rgb);
+					textureBuffer.put(rgb);
 				}
 			}
-			tBuffer.put(0);
+			textureBuffer.put(0);
 		}
-		tBuffer.rewind();
+		textureBuffer.rewind();
 		
 		/** setup vertexData*/
-		vertexDataArray[0] = OBJLoader.loadObj("src/res/cube.obj", true);
+		vertexDataArray[0] = OBJLoader.loadObj("src/res/teapot.obj", false);
 		vertexDataArray[0].setScale(new Vector3f(3,3,3));
 		vertexDataArray[0].setPosition(new Vector3f(0,-3.5,0));
 		
@@ -166,25 +157,28 @@ public class Main {
 		vertexDataArray[1].setPosition(new Vector3f(0,-2,0));
 		vertexDataArray[1].setScale(new Vector3f(1,1,1));*/
 		
-		vertexDataArray[1] = OBJLoader.loadObj("src/res/teapot.obj", false);
+		vertexDataArray[1] = OBJLoader.loadObj("src/res/smooth.obj", false);
 		vertexDataArray[1].setScale(new Vector3f(1,1,1));
-		vertexDataArray[1].setPosition(new Vector3f(0,2,4));
+		vertexDataArray[1].setPosition(new Vector3f(0,-0.5,2));
 		
 		/**vertexDataArray[2] = OBJLoader.loadObj("src/res/sphere.obj");
 		vertexDataArray[2].setPosition(new Vector3f(2,0,1));*/
 		
-		/**for(int i=0;i<4;i++){
-			vertexDataArray[i] = OBJLoader.loadObj("src/res/smooth.obj");
-			vertexDataArray[i].setPosition(new Vector3f().randomN().multN(2));
-		}*/
+		for(int i=0;i<16;i++){
+			vertexDataArray[i] = OBJLoader.loadObj("src/res/smooth.obj", true);
+			vertexDataArray[i].setPosition(new Vector3f().randomN().multN(4));
+		}
 		
 		//vertexDataArray[0] = new VertexData().generateRandom(100, 6, true);
+		
+		/** setup perspective matrix*/
+		proj.perspective(sim.getDimension().getX()/sim.getDimension().getY(), 70f, 1000f, 10f);
 		
 		/** start simse*/
 		sim.start();
 	}
 	
-	private static void initOpenCL() throws LWJGLException {
+	private static void initOpenCL() throws Exception {
 		IntBuffer errorBuff = BufferUtils.createIntBuffer(1);
 	    CL.create();
 	    platform = CLPlatform.getPlatforms().get(0); 
@@ -201,27 +195,34 @@ public class Main {
 	    												  +devices.get(0).getInfoSizeArray(CL10.CL_DEVICE_MAX_WORK_ITEM_SIZES)[1]+" / "
 	    											      +devices.get(0).getInfoSizeArray(CL10.CL_DEVICE_MAX_WORK_ITEM_SIZES)[2]);
 	    
-	    program = CL10.clCreateProgramWithSource(context, KernelLoader.loadKernel("src/com/se/test/kernels/fragmentShaderTest.cls"), null);
-	    int error = CL10.clBuildProgram(program, devices.get(0), "", null);
-	    String log = program.getBuildInfoString(devices.get(0), CL10.CL_PROGRAM_BUILD_LOG);
-	    if(log.length()>1){
-		    System.out.println("\n------------BUILD LOG------------\n");
-			System.out.println(log);
-			System.out.println("---------------------------------\n");
+	    programLoc[0] = "src/com/se/test/kernels/fragmentShaderTest.cls";
+	    programLoc[1] = "src/com/se/test/kernels/vertexShader.cls";
+	    boolean err = false;
+	    for(int i=0;i<1;i++){
+		    program[i] = CL10.clCreateProgramWithSource(context, KernelLoader.loadKernel(programLoc[i]), null);
+		    CL10.clBuildProgram(program[i], devices.get(0), "", null);
+		    String log = program[i].getBuildInfoString(devices.get(0), CL10.CL_PROGRAM_BUILD_LOG);
+		    if(log.length()>1){
+			    System.err.println("\n---------------------------------------------BUILD LOG--------------------------------------------------------");
+			    System.err.print("Kernel: [" +programLoc[i].substring("src/com/se/test/kernels/".length(), programLoc[i].length())+ "]\n\n");
+				System.err.println(log);
+				System.err.println("----------------------------------------------------------------------------------------------------------------\n");
+				err=true;
+		    }
 	    }
-		Util.checkCLError(error);
-		
-		//localWorkSize = BufferUtils.createPointerBuffer(dimensions);
-		//localWorkSize.put(0, (int)(8));
+	    if(err){
+	    	throw new Exception("Build Program Failed");
+	    }
 		
 		CLImageFormat format = new CLImageFormat(CL10.CL_INTENSITY, CL10.CL_UNORM_INT8);
 		resultColorM = CLMem.createImage2D(context, CL10.CL_MEM_READ_ONLY | CL10.CL_MEM_COPY_HOST_PTR, format, (long)(sim.getDimension().getX()/res), (long)(sim.getDimension().getY()/res), (long)(0), null, null);
-		rColorBuff = BufferUtils.createIntBuffer((int) ((sim.getDimension().getX()*(int)sim.getDimension().getY())/res));
+		resultColorBuffer = BufferUtils.createIntBuffer((int) ((sim.getDimension().getX()*(int)sim.getDimension().getY())/res));
 	}
 	
 	private static void kInput(int t, SIMKeyEvent k){
 		if(k == SIMKeyEvent.RELEASED){
-			if(t==KeyEvent.VK_F1){wireFrame = !wireFrame;}
+			if(t==KeyEvent.VK_F1){wireFrame = !wireFrame;if(wireFrameOnly&&wireFrame){wireFrameOnly=false;}}
+			if(t==KeyEvent.VK_F2){wireFrameOnly = !wireFrameOnly;if(wireFrameOnly&&wireFrame){wireFrame=false;}}
 			if(t==KeyEvent.VK_W){isWDown=false;}
 			if(t==KeyEvent.VK_A){isADown=false;}
 			if(t==KeyEvent.VK_S){isSDown=false;}
@@ -273,17 +274,14 @@ public class Main {
 		if(isQDown){rotation.sub(new Vector2f(transSpeed,0));}
 		if(isEDown){rotation.add(new Vector2f(transSpeed,0));}
 		
-		//vertexDataArray[0].setPosition(new Vector3f(Math.sin(sim.getTicks()*0.01f),0,Math.cos((sim.getTicks()*0.01f))));
+		///vertexDataArray[0].setPosition(new Vector3f(Math.sin(sim.getTicks()*0.01f),0,Math.cos((sim.getTicks()*0.01f))));
 		//vertexDataArray[1].setScale(new Vector3f(1f,Math.sin(sim.getTicks()*0.01f),1f));
-		//vertexDataArray[2].setRotation(new Vector3f(Math.sin(sim.getTicks()*0.01f),Math.cos(sim.getTicks()*0.01f),Math.sin(sim.getTicks()*0.01f)));
+		vertexDataArray[0].setRotation(new Vector3f(Math.sin(sim.getTicks()*0.01f),Math.cos(sim.getTicks()*0.01f),Math.sin(sim.getTicks()*0.01f)));
 	}
 	
 	private static void render(Thread t, Graphics g){
 		/** fill screen with white - set color to black*/
 		fillScreen(g, sim.getDimension(), Color.black);
-		
-		/** setup perspective matrix*/
-		proj.perspective(sim.getDimension().getX()/sim.getDimension().getY(), 70f, 1000f, 10f);
 		
 		/** setup camera*/
 		camera = new Matrix4f();
@@ -293,6 +291,7 @@ public class Main {
 		camera.translate(position);
 		camera.rotate(new Vector3f(0,1,0),rotation.getX());
 		camera2.rotate(new Vector3f(1,0,0),(float)(rotation.getY()));
+		camera.mult(camera2);
 
 		/** setup light*/
 		Matrix4f lightMatrix = new Matrix4f(light);
@@ -309,413 +308,324 @@ public class Main {
 			}
 		}
 		
+		//SETUP BUFFERS AND TRIANGLES________________________________________________________________________________________________________
+		
 		globalWorkSize = BufferUtils.createPointerBuffer(dimensions);
 		globalWorkSize.put(0, (int)(vertices));
 		
-		cBuffer = BufferUtils.createFloatBuffer(7);
-		/**cBuffer.put(camera.m[3+0*4]);
-		cBuffer.put(camera.m[3+1*4]);
-		cBuffer.put(camera.m[3+2*4]);*/
-		cBuffer.put(position.getX());
-		cBuffer.put(position.getY());
-		cBuffer.put(position.getZ());
-		cBuffer.put(0);
-		cBuffer.put(rotation.getX());
-		cBuffer.put(rotation.getY());
-		cBuffer.rewind();
+		infoBuffer = BufferUtils.createFloatBuffer(4);
+		infoBuffer.put(position.getX());
+		infoBuffer.put(position.getY());
+		infoBuffer.put(position.getZ());
+		infoBuffer.put(res);
+		infoBuffer.rewind();
 		
-		lpBuffer = BufferUtils.createFloatBuffer(4);
-		lpBuffer.put(-transLight.getX());
-		lpBuffer.put(-transLight.getY());
-		lpBuffer.put(-transLight.getZ());
-		lpBuffer.rewind();
+		lightPosBuffer = BufferUtils.createFloatBuffer(3);
+		lightPosBuffer.put(-transLight.getX());
+		lightPosBuffer.put(-transLight.getY());
+		lightPosBuffer.put(-transLight.getZ());
+		lightPosBuffer.rewind();
+
+		viewBuffer = BufferUtils.createFloatBuffer(vertices*15);
+		normalBuffer = BufferUtils.createFloatBuffer(vertices*15);
+		triangleBuffer = BufferUtils.createFloatBuffer(vertices*15);
 		
-		vtCountB = BufferUtils.createFloatBuffer(3);
-		vtCountB.put(vertices);
-		vtCountB.put(res);
-		vtCountB.rewind();
+		wbf = new BufferedImage((int)(sim.getDimension().getX()),(int)(sim.getDimension().getY()),BufferedImage.TYPE_INT_RGB);
+		Graphics wg = wbf.getGraphics();
+		wg.setColor(new Color(1f,0f,0f));
 		
-		x1B = BufferUtils.createFloatBuffer(vertices*15);
-		nB = BufferUtils.createFloatBuffer(vertices*15);
-		rB = BufferUtils.createFloatBuffer(vertices*15);
-		cB = BufferUtils.createFloatBuffer(vertices*15);
+		long t3 = System.currentTimeMillis();
 		
 		for(int vertexIndex=vertexDataArray.length-1;vertexIndex>=0;vertexIndex--){
 			VertexData vd = vertexDataArray[vertexIndex];
 			if(vd!=null){
+				
+				//APPLY TRANSFORMATIONS________________________________________________________________________________________________________
+					
+				/** apply position matrices*/
+				Vector3f[] newPositions = new Vector3f[vd.getPos().length];
+				Vector3f[] realPositions = new Vector3f[vd.getPos().length];
+				float[] w = new float[vd.getPos().length];
+				
+				/** apply normal matrices*/		
+				Vector3f[] normT = new Vector3f[vd.getNormal().length];
+				
+				/** setup matrix*/
+				Matrix4f rot = new Matrix4f();rot = rot.identity();
+				Matrix4f rot1 = new Matrix4f();rot1 = rot1.identity();
+				Matrix4f rot2 = new Matrix4f();rot2 = rot2.identity();
+				rot.rotate(new Vector3f(1,0,0), vd.getRotation().getX());
+				rot1.rotate(new Vector3f(0,1,0), vd.getRotation().getY());
+				rot2.rotate(new Vector3f(0,0,1), vd.getRotation().getZ());
+				rot1.mult(rot2);
+				rot.mult(rot1);
+				
+				Matrix4f scale = new Matrix4f(); scale = scale.identity();
+				scale.scale(vd.getScale());
+				
+				for(i=vd.getPos().length-1;i>=0;i--){
+					Vector3f f = vd.getPos()[i];
+					Matrix4f ma = new Matrix4f(f);
+					ma.mult(scale);
+					ma.mult(rot);
+					ma.translate(vd.getPosition().addN(position));
+					ma.mult(camera);
+					ma.mult(proj);
+					
+					newPositions[i] = new Vector3f(ma.m[3+0*4],ma.m[3+1*4],ma.m[3+2*4]);
+					w[i] = ma.m[3+3*4];
+					
+					ma = new Matrix4f(f);
+					ma.mult(scale);
+					ma.mult(rot);
+					ma.translate(vd.getPosition());
+					
+					realPositions[i] = new Vector3f(ma.m[3+0*4],ma.m[3+1*4],ma.m[3+2*4]);
 
-			
-			/** apply position matrices*/
-			Matrix4f[] newPositions = new Matrix4f[vd.getPos().length];
-			Matrix4f[] realPositions = new Matrix4f[vd.getPos().length];
-			Matrix4f[] camPositions = new Matrix4f[vd.getPos().length];
-			/** apply normal matrices*/		
-			Vector3f[] normT = new Vector3f[vd.getNormal().length];
-			
-			/** setup matrix*/
-			Matrix4f rot = new Matrix4f();rot = rot.identity();
-			Matrix4f rot1 = new Matrix4f();rot1 = rot1.identity();
-			Matrix4f rot2 = new Matrix4f();rot2 = rot2.identity();
-			rot.rotate(new Vector3f(1,0,0), vd.getRotation().getX());
-			rot1.rotate(new Vector3f(0,1,0), vd.getRotation().getY());
-			rot2.rotate(new Vector3f(0,0,1), vd.getRotation().getZ());
-			
-			Matrix4f scale = new Matrix4f(); scale = scale.identity();
-			scale.scale(vd.getScale());
-			
-			for(i=vd.getPos().length-1;i>=0;i--){
-				Vector3f f = vd.getPos()[i];
-				Matrix4f ma = new Matrix4f(f);
-				ma.mult(scale);
-				ma.mult(rot);ma.mult(rot1);ma.mult(rot2);
-				ma.translate(vd.getPosition().addN(position));
-				ma.mult(camera);
-				ma.mult(camera2);
-				ma.mult(proj);
+					f = vd.getNormal()[i];
+					Matrix4f mab = new Matrix4f(f);
+					mab.mult(rot);
+					normT[i] = new Vector3f(mab.m[3+0*4], mab.m[3+1*4], mab.m[3+2*4]);
+				}
 				
-				newPositions[i] = ma;
+				//CREATE TRIANGLES________________________________________________________________________________________________________
 				
-				ma = new Matrix4f(f);
-				ma.mult(scale);
-				ma.mult(rot);ma.mult(rot1);ma.mult(rot2);
-				ma.translate(vd.getPosition());
-				
-				realPositions[i] = ma;
-				
-				ma = new Matrix4f(f);
-				ma.mult(scale);
-				ma.mult(rot);ma.mult(rot1);ma.mult(rot2);
-				ma.translate(vd.getPosition().addN(position));
-				ma.mult(camera);
-				ma.mult(camera2);
-				
-				camPositions[i] = ma;
-			}
-			
-			for(i=vd.getNormal().length-1;i>=0;i--){
-				Vector3f f = vd.getNormal()[i];
-				Matrix4f mab = new Matrix4f(f);
-				mab.mult(scale);
-				mab.mult(rot);mab.mult(rot1);mab.mult(rot2);
-				normT[i] = new Vector3f(mab.m[3+0*4], mab.m[3+1*4], mab.m[3+2*4]);
-			}
-			
-			Triangle[] triangles = new Triangle[vd.getvIndicies().length];
-			Triangle[] camtriangles = new Triangle[vd.getvIndicies().length];
-			Triangle[] normaltriangles = new Triangle[vd.getvIndicies().length];
-			Triangle[] realtriangles = new Triangle[vd.getvIndicies().length];
-			Triangle[] textriangles = null;
-			if(vd.getUV()!=null){textriangles = new Triangle[vd.getUVIndices().length];}else{textriangles = new Triangle[vd.getnIndicies().length];}
-			Vector3f[] wTri = new Vector3f[vd.getvIndicies().length];
-			
-			for(i=vd.getvIndicies().length-1;i>=0;i--){
-				
-				/** create triangles*/
-				int x = 0,y = 0,z = 0;
-				Triangle tr = null;
-				if(vd.getvIndicies()!=null){
+				for(i=vd.getvIndicies().length-1;i>=0;i--){
+					/** create triangles*/
+					int x = 0,y = 0,z = 0;
+					boolean bCam = false;
+					Triangle tr = null;
+					if(vd.getvIndicies()!=null){
 						x = (int)vd.getvIndicies()[i].getX();
 						y = (int)vd.getvIndicies()[i].getY();
 						z = (int)vd.getvIndicies()[i].getZ();
-						
-					tr = new Triangle(new Vector3f(newPositions[x].m[3+0*4],newPositions[x].m[3+1*4],newPositions[x].m[3+2*4]),
-									  new Vector3f(newPositions[y].m[3+0*4],newPositions[y].m[3+1*4],newPositions[y].m[3+2*4]),
-									  new Vector3f(newPositions[z].m[3+0*4],newPositions[z].m[3+1*4],newPositions[z].m[3+2*4]));
-					triangles[i] = tr;
-					
-					tr = new Triangle(new Vector3f(realPositions[x].m[3+0*4],realPositions[x].m[3+1*4],realPositions[x].m[3+2*4]),
-							  		  new Vector3f(realPositions[y].m[3+0*4],realPositions[y].m[3+1*4],realPositions[y].m[3+2*4]),
-							  		  new Vector3f(realPositions[z].m[3+0*4],realPositions[z].m[3+1*4],realPositions[z].m[3+2*4]));
-					realtriangles[i] = tr;
-					
-					tr = new Triangle(new Vector3f(camPositions[x].m[3+0*4],camPositions[x].m[3+1*4],camPositions[x].m[3+2*4]),
-							   		  new Vector3f(camPositions[y].m[3+0*4],camPositions[y].m[3+1*4],camPositions[y].m[3+2*4]),
-							   		  new Vector3f(camPositions[z].m[3+0*4],camPositions[z].m[3+1*4],camPositions[z].m[3+2*4]));
-					camtriangles[i] = tr;
-					wTri[i] = new Vector3f(newPositions[x].m[3+3*4],newPositions[y].m[3+3*4],newPositions[z].m[3+3*4]);
-				}
-			
-				/** create normal triangles*/
-				x = 0;y = 0;z = 0;
-				if(vd.getnIndicies()!=null){
-					x = (int)vd.getnIndicies()[i].getX();
-					y = (int)vd.getnIndicies()[i].getY();
-					z = (int)vd.getnIndicies()[i].getZ();
-					tr = new Triangle(new Vector3f(normT[x].getX(),normT[x].getY(),normT[x].getZ()),
-									  new Vector3f(normT[y].getX(),normT[y].getY(),normT[y].getZ()),
-									  new Vector3f(normT[z].getX(),normT[z].getY(),normT[z].getZ()));
-					normaltriangles[i] = tr;
-				}else{
-					normaltriangles[i] = new Triangle(new Vector3f(1,0,0),new Vector3f(0,1,0),new Vector3f(0,0,1));
-				}
-				
-				/** create uv triangles*/
-				x = 0;y = 0;z = 0;
-				if(vd.getUVIndices()!=null){
-					x = (int)vd.getUVIndices()[i].getX();
-					y = (int)vd.getUVIndices()[i].getY();
-					z = (int)vd.getUVIndices()[i].getZ();
-					tr = new Triangle(new Vector3f(vd.getUV()[x].getX(),vd.getUV()[x].getY(),0),
-									  new Vector3f(vd.getUV()[y].getX(),vd.getUV()[y].getY(),0),
-									  new Vector3f(vd.getUV()[z].getX(),vd.getUV()[z].getY(),0));
-					textriangles[i] = tr;
-				}else{
-					textriangles[i] = new Triangle(new Vector3f(1,0,0),new Vector3f(0,1,0),new Vector3f(0,0,1));
-				}
-				
-				float ratiox = 1280*0.5f;
-				float ratioy = 720*0.5f;
-				float x11 = (triangles[i].getP1().getX()*(ratiox/triangles[i].getP1().getZ()))+ratiox;
-				float y11 = (triangles[i].getP1().getY()*(ratioy/triangles[i].getP1().getZ()))+ratioy;
-				float x22 = (triangles[i].getP2().getX()*(ratiox/triangles[i].getP2().getZ()))+ratiox;
-				float y22 = (triangles[i].getP2().getY()*(ratioy/triangles[i].getP2().getZ()))+ratioy;
-				float x33 = (triangles[i].getP3().getX()*(ratiox/triangles[i].getP3().getZ()))+ratiox;
-				float y33 = (triangles[i].getP3().getY()*(ratioy/triangles[i].getP3().getZ()))+ratioy;
-				
-				Vector2f x1 = new Vector2f(x11/res, y11/res);
-				Vector2f x2 = new Vector2f(x22/res, y22/res);
-				Vector2f x3 = new Vector2f(x33/res, y33/res);
-				
-				float f = ((x2.getY()-x3.getY())*(x1.getX()-x3.getX())+(x3.getX()-x2.getX())*(x1.getY()-x3.getY()));
-			}
-			
-			/** create triangle-buffer and screen coordinates*/
-			for(i=vd.getvIndicies().length-1;i>=0;i--){
-				/** get screen positions*/
-				Triangle triangle = triangles[i];
-				Triangle ntriangle = normaltriangles[i];
-				Triangle rtriangle = realtriangles[i];
-				Triangle ctriangle = realtriangles[i];
-				Triangle ttriangle = null;
-				if(textriangles!=null){ttriangle = textriangles[i];}
-				
-				if(wTri[i].getX()<0&&wTri[i].getY()<0&&wTri[i].getZ()<0){	
-					if(rtriangle!=null){
-		
-						rB.put(rtriangle.getP1().getX());
-						rB.put(rtriangle.getP1().getY());
-						rB.put(rtriangle.getP1().getZ());
-						
-						rB.put(rtriangle.getP2().getX());
-						rB.put(rtriangle.getP2().getY());
-						rB.put(rtriangle.getP2().getZ());
-						
-						rB.put(rtriangle.getP3().getX());
-						rB.put(rtriangle.getP3().getY());
-						rB.put(rtriangle.getP3().getZ());
-						
-						rB.put(0);
-						rB.put(0);
-						
-						rB.put(0);
-						rB.put(0);
-						
-						rB.put(0);
-						rB.put(0);
-					}
-					
-					if(ctriangle!=null){
-						cB.put(ctriangle.getP1().getX());
-						cB.put(ctriangle.getP1().getY());
-						cB.put(ctriangle.getP1().getZ());
-						
-						cB.put(ctriangle.getP2().getX());
-						cB.put(ctriangle.getP2().getY());
-						cB.put(ctriangle.getP2().getZ());
-						
-						cB.put(ctriangle.getP3().getX());
-						cB.put(ctriangle.getP3().getY());
-						cB.put(ctriangle.getP3().getZ());
-						
-						cB.put(0);
-						cB.put(0);
-						
-						cB.put(0);
-						cB.put(0);
-						
-						cB.put(0);
-						cB.put(0);
-					}
-				
-				if(triangle!=null){		
-						x1B.put(triangle.getP1().getX());
-						x1B.put(triangle.getP1().getY());
-						x1B.put(triangle.getP2().getX());
-						
-						x1B.put(triangle.getP2().getY());
-						x1B.put(triangle.getP3().getX());
-						x1B.put(triangle.getP3().getY());
-						
-						x1B.put(triangle.getP1().getZ());
-						x1B.put(triangle.getP2().getZ());
-						x1B.put(triangle.getP3().getZ());
-						
-						x1B.put(0);
-						x1B.put(0);
-						
-						x1B.put(0);
-						x1B.put(0);
-						
-						x1B.put(0);
-						x1B.put(0);
-						
-						if(ntriangle!=null){
-							nB.put(ntriangle.getP1().getX());
-							nB.put(ntriangle.getP1().getY());
-							nB.put(ntriangle.getP1().getZ());
 							
-							nB.put(ntriangle.getP2().getX());
-							nB.put(ntriangle.getP2().getY());
-							nB.put(ntriangle.getP2().getZ());
+						if(w[x]<0&&w[y]<0&&w[z]<0){
+							tr = new Triangle(newPositions[x],newPositions[y],newPositions[z]);
+							viewBuffer.put(tr.getP1().getX());
+							viewBuffer.put(tr.getP1().getY());
 							
-							nB.put(ntriangle.getP3().getX());
-							nB.put(ntriangle.getP3().getY());
-							nB.put(ntriangle.getP3().getZ());
+							viewBuffer.put(tr.getP2().getX());
+							viewBuffer.put(tr.getP2().getY());
 							
-							if(ttriangle!=null){
+							viewBuffer.put(tr.getP3().getX());
+							viewBuffer.put(tr.getP3().getY());
 							
-								nB.put(ttriangle.getP1().getX());
-								nB.put(ttriangle.getP1().getY());
-								
-								nB.put(ttriangle.getP2().getX());
-								nB.put(ttriangle.getP2().getY());
-								
-								nB.put(ttriangle.getP3().getX());
-								nB.put(ttriangle.getP3().getY());
-							}else{
-								nB.put(-1);
-								nB.put(-1);
-								
-								nB.put(-1);
-								nB.put(-1);
-								
-								nB.put(-1);
-								nB.put(-1);
+							viewBuffer.put(tr.getP1().getZ());
+							viewBuffer.put(tr.getP2().getZ());
+							viewBuffer.put(tr.getP3().getZ());
+							
+							viewBuffer.put(0);
+							viewBuffer.put(0);
+							
+							viewBuffer.put(0);
+							viewBuffer.put(0);
+							
+							viewBuffer.put(0);
+							viewBuffer.put(0);
+							
+							if(wireFrame||wireFrameOnly){
+								float ratiox = (sim.getDimension().getX()*0.5f); float ratioy = (sim.getDimension().getY()*0.5f);
+								int x11 = (int) (tr.getP1().getX()*(ratiox/tr.getP1().getZ()));
+								int y11 = (int) (tr.getP1().getY()*(ratioy/tr.getP1().getZ()));
+								int x22 = (int) (tr.getP2().getX()*(ratiox/tr.getP2().getZ()));
+								int y22 = (int) (tr.getP2().getY()*(ratioy/tr.getP2().getZ()));
+								int x33 = (int) (tr.getP3().getX()*(ratiox/tr.getP3().getZ()));
+								int y33 = (int) (tr.getP3().getY()*(ratioy/tr.getP3().getZ()));
+								x11+=ratiox;x22+=ratiox;x33+=ratiox;
+								y11+=ratioy;y22+=ratioy;y33+=ratioy;
+								x11*=1.33f;y11*=1.33f;x22*=1.33f;y22*=1.33f;x33*=1.33f;y33*=1.33f;
+								wg.drawLine(x11,y11,x22,y22);
+								wg.drawLine(x22,y22,x33,y33);
+								wg.drawLine(x33,y33,x11,y11);
 							}
+							
+							tr = new Triangle(realPositions[x],realPositions[y],realPositions[z]);
+							triangleBuffer.put(tr.getP1().getX());
+							triangleBuffer.put(tr.getP1().getY());
+							triangleBuffer.put(tr.getP1().getZ());
+							
+							triangleBuffer.put(tr.getP2().getX());
+							triangleBuffer.put(tr.getP2().getY());
+							triangleBuffer.put(tr.getP2().getZ());
+							
+							triangleBuffer.put(tr.getP3().getX());
+							triangleBuffer.put(tr.getP3().getY());
+							triangleBuffer.put(tr.getP3().getZ());
+							bCam = true;
+						}
+					}
+				
+					
+					/** create normal triangles*/
+					x = 0;y = 0;z = 0;
+					if(bCam){
+						if(vd.getnIndicies()!=null){
+							x = (int)vd.getnIndicies()[i].getX();
+							y = (int)vd.getnIndicies()[i].getY();
+							z = (int)vd.getnIndicies()[i].getZ();
+							tr = new Triangle(normT[x],normT[y],normT[z]);
+							
+							normalBuffer.put(tr.getP1().getX());
+							normalBuffer.put(tr.getP1().getY());
+							normalBuffer.put(tr.getP1().getZ());
+								
+							normalBuffer.put(tr.getP2().getX());
+							normalBuffer.put(tr.getP2().getY());
+							normalBuffer.put(tr.getP2().getZ());
+								
+							normalBuffer.put(tr.getP3().getX());
+							normalBuffer.put(tr.getP3().getY());
+							normalBuffer.put(tr.getP3().getZ());
+								
+							normalBuffer.put(0);
+							normalBuffer.put(0);
+								
+							normalBuffer.put(0);
+							normalBuffer.put(0);
+								
+							normalBuffer.put(0);
+							normalBuffer.put(0);
+						}
+					}
+					
+					/** create uv triangles*/
+					x = 0;y = 0;z = 0;
+					if(bCam){
+						if(vd.getUVIndices()!=null){
+							x = (int)vd.getUVIndices()[i].getX();
+							y = (int)vd.getUVIndices()[i].getY();
+							z = (int)vd.getUVIndices()[i].getZ();
+							tr = new Triangle(vd.getUV()[x],vd.getUV()[y],vd.getUV()[z]);
+							
+							triangleBuffer.put(tr.getP1().getX());
+							triangleBuffer.put(tr.getP1().getY());
+							
+							triangleBuffer.put(tr.getP2().getX());
+							triangleBuffer.put(tr.getP2().getY());
+							
+							triangleBuffer.put(tr.getP3().getX());
+							triangleBuffer.put(tr.getP3().getY());
+							
+						}else{
+							triangleBuffer.put(-1);
+							triangleBuffer.put(-1);
+							
+							triangleBuffer.put(-1);
+							triangleBuffer.put(-1);
+							
+							triangleBuffer.put(-1);
+							triangleBuffer.put(-1);
 						}
 					}
 				}
 			}
-			
-			/** draw wireframe*/
-			if(wireFrame){
-				float ratiox = (sim.getDimension().getX()*0.5f); float ratioy = (sim.getDimension().getY()*0.5f);
-				for(int i=vd.getvIndicies().length-1;i>=0;i--){
-					if(wTri[i].getX()<0&&wTri[i].getY()<0&&wTri[i].getZ()<0){
-						Triangle triangle = triangles[i];
-						int x11 = (int) (triangle.getP1().getX()*(ratiox/triangle.getP1().getZ()));
-						int y11 = (int) (triangle.getP1().getY()*(ratioy/triangle.getP1().getZ()));
-						int x22 = (int) (triangle.getP2().getX()*(ratiox/triangle.getP2().getZ()));
-						int y22 = (int) (triangle.getP2().getY()*(ratioy/triangle.getP2().getZ()));
-						int x33 = (int) (triangle.getP3().getX()*(ratiox/triangle.getP3().getZ()));
-						int y33 = (int) (triangle.getP3().getY()*(ratioy/triangle.getP3().getZ()));
-						x11+=ratiox;x22+=ratiox;x33+=ratiox;
-						y11+=ratioy;y22+=ratioy;y33+=ratioy;
-						x11*=1.33f;y11*=1.33f;x22*=1.33f;y22*=1.33f;x33*=1.33f;y33*=1.33f;
-						g.setColor(new Color(1f,0f,0f,0.1f));
-						g.drawLine(x11,y11,x22,y22);
-						g.drawLine(x22,y22,x33,y33);
-						g.drawLine(x33,y33,x11,y11);
-					}
-				}
-			}
-			}
 		}
 		
-		x1B.rewind();
-		nB.rewind();
-		rB.rewind();
-		cB.rewind();
+		viewBuffer.rewind();
+		normalBuffer.rewind();
+		triangleBuffer.rewind();
+		long t4 = System.currentTimeMillis();
+		System.out.println(t4-t3);
 
-		if(!wireFrame){
-			/** set kernel data*/
-			
+		/** set kernel data*/
+		
+		if(!wireFrameOnly){
+				
 			CLImageFormat format = new CLImageFormat(CL10.CL_RGBA, CL10.CL_UNORM_INT8);
-			
+	
 			IntBuffer errB = BufferUtils.createIntBuffer(1);
 			int memPTR = CL10.CL_MEM_COPY_HOST_PTR;
-			
-			x1M = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, x1B, errB); Util.checkCLError(errB.get(0));
-			rM = CL10.clCreateBuffer(context,  CL10.CL_MEM_WRITE_ONLY | memPTR, rB, errB); Util.checkCLError(errB.get(0));
-			vtCountM = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, vtCountB, errB); Util.checkCLError(errB.get(0));
-			nM = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, nB, errB); Util.checkCLError(errB.get(0));
-			cM = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, cBuffer, errB); Util.checkCLError(errB.get(0));
-			lpM = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, lpBuffer, errB); Util.checkCLError(errB.get(0));
-			tM = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, tBuffer, errB); Util.checkCLError(errB.get(0));
-			//cBM = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, cB, errB); Util.checkCLError(errB.get(0));
+	
+			viewMem = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, viewBuffer, errB); Util.checkCLError(errB.get(0));
+			triangleMem = CL10.clCreateBuffer(context,  CL10.CL_MEM_WRITE_ONLY | memPTR, triangleBuffer, errB); Util.checkCLError(errB.get(0));
+			normalMem = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, normalBuffer, errB); Util.checkCLError(errB.get(0));
+			infoMem = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, infoBuffer, errB); Util.checkCLError(errB.get(0));
+			lightPositionMem = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, lightPosBuffer, errB); Util.checkCLError(errB.get(0));
+			textureMem = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, textureBuffer, errB); Util.checkCLError(errB.get(0));
 			resultColorM = CLMem.createImage2D(context, CL10.CL_MEM_WRITE_ONLY, format, (long)(sim.getDimension().getX()/res), (long)(sim.getDimension().getY()/res), (long)(0), null, errB);Util.checkCLError(errB.get(0));
-			CLMem zBM = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, BufferUtils.createFloatBuffer((int)((sim.getDimension().getX()/res)*(sim.getDimension().getX()/res))), errB); Util.checkCLError(errB.get(0));
-			kernel = CL10.clCreateKernel(program, "render", errB); Util.checkCLError(errB.get(0));
-			
-			CL10.clSetKernelArg(kernel, 0, x1M);
-			CL10.clSetKernelArg(kernel, 1, rM);
-			CL10.clSetKernelArg(kernel, 2, nM);
-			CL10.clSetKernelArg(kernel, 3, vtCountM);
-			CL10.clSetKernelArg(kernel, 4, cM);
-			CL10.clSetKernelArg(kernel, 5, lpM);
-			CL10.clSetKernelArg(kernel, 6, tM);
-			CL10.clSetKernelArg(kernel, 7, resultColorM);
-			CL10.clSetKernelArg(kernel, 8, zBM);
-			
+			CLMem zBufferMem = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, BufferUtils.createFloatBuffer((int)((sim.getDimension().getX()/res)*(sim.getDimension().getX()/res))), errB); Util.checkCLError(errB.get(0));
+	
+			kernel[0] = CL10.clCreateKernel(program[0], "render", errB); Util.checkCLError(errB.get(0));
+	
+			CL10.clSetKernelArg(kernel[0], 0, viewMem);
+			CL10.clSetKernelArg(kernel[0], 1, triangleMem);
+			CL10.clSetKernelArg(kernel[0], 2, normalMem);
+			CL10.clSetKernelArg(kernel[0], 3, infoMem);
+			CL10.clSetKernelArg(kernel[0], 4, lightPositionMem);
+			CL10.clSetKernelArg(kernel[0], 5, textureMem);
+			CL10.clSetKernelArg(kernel[0], 6, resultColorM);
+			CL10.clSetKernelArg(kernel[0], 7, zBufferMem);
+	
 			long t1 = System.currentTimeMillis();
-			int err = CL10.clEnqueueNDRangeKernel(queue, kernel, dimensions, null, globalWorkSize, null, null, null);Util.checkCLError(err);
+	
+			int err = CL10.clEnqueueNDRangeKernel(queue, kernel[0], dimensions, null, globalWorkSize, null, null, null);Util.checkCLError(err);
 			CL10.clFinish(queue);
+	
 			long t2 = System.currentTimeMillis();
 			dt+=t2-t1;
 			amount++;
 			if(sim.getTicks()%10==0){
 				System.out.println("render: " + dt/amount+"ms");dt=0;amount=0;
 			}
-			
+	
 			PointerBuffer origin = new PointerBuffer(3);
 			origin.put(0l);origin.put(0l);origin.put(0l);
 			origin.rewind();
 			PointerBuffer region = new PointerBuffer(3);
 			region.put((long)(sim.getDimension().getX()/res));region.put((long)(sim.getDimension().getY()/res));region.put(1l);
 			region.rewind();
-			
-			err = CL10.clEnqueueReadImage(queue, resultColorM, CL10.CL_TRUE, origin, region, (long)(0), (long)(0), rColorBuff, null, null);Util.checkCLError(err);
+	
+			err = CL10.clEnqueueReadImage(queue, resultColorM, CL10.CL_TRUE, origin, region, (long)(0), (long)(0), resultColorBuffer, null, null);Util.checkCLError(err);
 			CL10.clFinish(queue);
-
-
-			CL10.clReleaseMemObject(rM);
-			CL10.clReleaseMemObject(nM);
-			CL10.clReleaseMemObject(vtCountM);
-			CL10.clReleaseMemObject(cM);
-			CL10.clReleaseMemObject(lpM);
-			CL10.clReleaseMemObject(tM);
-			CL10.clReleaseMemObject(zBM);
-			//CL10.clReleaseMemObject(cBM);
+	
+	
+			CL10.clReleaseMemObject(triangleMem);
+			CL10.clReleaseMemObject(normalMem);
+			CL10.clReleaseMemObject(infoMem);
+			CL10.clReleaseMemObject(lightPositionMem);
+			CL10.clReleaseMemObject(textureMem);
+			CL10.clReleaseMemObject(zBufferMem);
 			CL10.clReleaseMemObject(resultColorM);
-			CL10.clReleaseKernel(kernel);
-			
+			CL10.clReleaseKernel(kernel[0]);
+	
 			t1 = System.currentTimeMillis();
+	
 			/** draw pixels*/
-			bf = new BufferedImage((int)(sim.getDimension().getX()/res),(int)(sim.getDimension().getY()/res),BufferedImage.TYPE_INT_RGB);int rgb;
+			bf = new BufferedImage((int)(sim.getDimension().getX()/res),(int)(sim.getDimension().getY()/res),BufferedImage.TYPE_INT_RGB);
 			Raster b = bf.getRaster();
 			for(int yi=0;yi<bf.getHeight();yi++){
 				for(int xi=0;xi<bf.getWidth();xi++){
 					int i = xi+yi*bf.getWidth();
-					b.getDataBuffer().setElem(i, rColorBuff.get(i));
+					b.getDataBuffer().setElem(i, resultColorBuffer.get(i));
 				}
 			}
 			bf.getRaster().setDataElements(0, 0, b);
-			
+	
 			if(bf!=null){
-			((Graphics2D) g).drawRenderedImage(bf, AffineTransform.getScaleInstance(
-					((sim.getDimension().getX()/bf.getWidth())*1.33f), ((sim.getDimension().getY()/bf.getHeight())*1.33f)));
+				((Graphics2D) g).drawRenderedImage(bf, AffineTransform.getScaleInstance(
+						((sim.getDimension().getX()/bf.getWidth())*1.33f), ((sim.getDimension().getY()/bf.getHeight())*1.33f)));
 			}
+	
 			t2 = System.currentTimeMillis();
 			dt1+=t2-t1;
 			amount1++;
 			if(sim.getTicks()%10==0){
-			//	System.out.println("draw image: " + dt1/amount1 +"ms");dt1=0;amount1=0;
+				//	System.out.println("draw image: " + dt1/amount1 +"ms");dt1=0;amount1=0;
 			}
+		
 		}
 
-		if(wireFrame){
+		if(wireFrame||wireFrameOnly){
+			if(wireFrame){
+				((Graphics2D)g).setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.4f));
+			}
+			g.drawImage(wbf, 0, 0, null);
+			((Graphics2D)g).setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1f));
+			
 			float ratiox = (sim.getDimension().getX()*0.5f); float ratioy = (sim.getDimension().getY()*0.5f);
 			/** draw light*/
+			float a = 0.3f;
 			g.setColor(new Color(1f,0f,0f,0.5f));
 			Matrix4f lightPM = new Matrix4f(transLight);
 			lightPM.translate(position.multN(-1f));
@@ -732,13 +642,13 @@ public class Main {
 					(int)(50f/(projLight.getZ())));
 
 			float coordLengthMin = 0f;
-			float coordLength = 1f;
+			float coordLength = -1.5f;
 
-			g.setColor(new Color(1f,0f,0f,0.3f));
+			g.setColor(new Color(1f,0f,0f,a));
 			DrawUtils.draw3DLine(g, new Vector3f(coordLengthMin,0,0), new Vector3f(coordLength,0,0), position, rotLM, rotLM1, proj, ratiox, ratioy);
-			g.setColor(new Color(0f,1f,0f,0.3f));
+			g.setColor(new Color(0f,1f,0f,a));
 			DrawUtils.draw3DLine(g, new Vector3f(0,coordLengthMin,0), new Vector3f(0,coordLength,0), position, rotLM, rotLM1, proj, ratiox, ratioy);
-			g.setColor(new Color(0f,0f,1f,0.3f));
+			g.setColor(new Color(0f,0f,1f,a));
 			DrawUtils.draw3DLine(g, new Vector3f(0,0,coordLengthMin), new Vector3f(0,0,coordLength), position, rotLM, rotLM1, proj, ratiox, ratioy);
 
 			g.setColor(new Color(1f,1f,1f,0.5f));
