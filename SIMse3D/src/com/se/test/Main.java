@@ -64,7 +64,7 @@ public class Main {
 	 
 	static VertexData[] vertexDataArray = new VertexData[64];
 	static BufferedImage bf, wbf;
-	private static float res = 2f;
+	private static float res = 1f;
 	private static Cursor cursor;
 
 	static int i = 0;
@@ -126,11 +126,13 @@ public class Main {
 		initOpenCL();
 		
 		/** load textures*/
-		tex = new Texture[2];
+		tex = new Texture[3];
 		tex[0] = new Texture();
 		tex[1] = new Texture();
-		tex[0].importTexture("src/res/textures/pack/197.png");
-		tex[1].importTexture("src/res/textures/pack/197_norm.png");
+		tex[2] = new Texture();
+		tex[0].importTexture("src/res/textures/testres/test256.png");
+		tex[1].importTexture("src/res/textures/testres/test256S.png");
+		tex[2].importTexture("src/res/textures/testres/test256N.png");
 		textureBuffer = BufferUtils.createIntBuffer(tex.length+((tex.length)*(tex[0].getImage().getHeight()*tex[0].getImage().getWidth())));
 		for(int j=0; j<tex.length;j++){
 			for(int y=0;y<tex[j].getImage().getHeight();y++){
@@ -144,7 +146,7 @@ public class Main {
 		textureBuffer.rewind();
 		
 		/** setup vertexData*/
-		vertexDataArray[0] = OBJLoader.loadObj("src/res/teapot.obj", false);
+		vertexDataArray[0] = OBJLoader.loadObj("src/res/torusuv.obj", true);
 		vertexDataArray[0].setScale(new Vector3f(3,3,3));
 		vertexDataArray[0].setPosition(new Vector3f(0,-3.5,0));
 		
@@ -157,17 +159,17 @@ public class Main {
 		vertexDataArray[1].setPosition(new Vector3f(0,-2,0));
 		vertexDataArray[1].setScale(new Vector3f(1,1,1));*/
 		
-		vertexDataArray[1] = OBJLoader.loadObj("src/res/smooth.obj", false);
-		vertexDataArray[1].setScale(new Vector3f(1,1,1));
-		vertexDataArray[1].setPosition(new Vector3f(0,-0.5,2));
+		vertexDataArray[1] = OBJLoader.loadObj("src/res/smooth.obj", true);
+		//vertexDataArray[1].setScale(new Vector3f(1,1,1));
+		//vertexDataArray[1].setPosition(new Vector3f(0,-0.5,2));
 		
 		/**vertexDataArray[2] = OBJLoader.loadObj("src/res/sphere.obj");
 		vertexDataArray[2].setPosition(new Vector3f(2,0,1));*/
 		
-		for(int i=0;i<16;i++){
+		/**for(int i=0;i<16;i++){
 			vertexDataArray[i] = OBJLoader.loadObj("src/res/smooth.obj", true);
 			vertexDataArray[i].setPosition(new Vector3f().randomN().multN(4));
-		}
+		}*/
 		
 		//vertexDataArray[0] = new VertexData().generateRandom(100, 6, true);
 		
@@ -276,7 +278,7 @@ public class Main {
 		
 		///vertexDataArray[0].setPosition(new Vector3f(Math.sin(sim.getTicks()*0.01f),0,Math.cos((sim.getTicks()*0.01f))));
 		//vertexDataArray[1].setScale(new Vector3f(1f,Math.sin(sim.getTicks()*0.01f),1f));
-		vertexDataArray[0].setRotation(new Vector3f(Math.sin(sim.getTicks()*0.01f),Math.cos(sim.getTicks()*0.01f),Math.sin(sim.getTicks()*0.01f)));
+		//vertexDataArray[0].setRotation(new Vector3f(Math.sin(sim.getTicks()*0.01f),Math.cos(sim.getTicks()*0.01f),Math.sin(sim.getTicks()*0.01f)));
 	}
 	
 	private static void render(Thread t, Graphics g){
@@ -313,10 +315,12 @@ public class Main {
 		globalWorkSize = BufferUtils.createPointerBuffer(dimensions);
 		globalWorkSize.put(0, (int)(vertices));
 		
-		infoBuffer = BufferUtils.createFloatBuffer(4);
+		infoBuffer = BufferUtils.createFloatBuffer(6);
 		infoBuffer.put(position.getX());
 		infoBuffer.put(position.getY());
 		infoBuffer.put(position.getZ());
+		infoBuffer.put(rotation.getX());
+		infoBuffer.put(rotation.getY());
 		infoBuffer.put(res);
 		infoBuffer.rewind();
 		
@@ -381,8 +385,9 @@ public class Main {
 					ma.translate(vd.getPosition());
 					
 					realPositions[i] = new Vector3f(ma.m[3+0*4],ma.m[3+1*4],ma.m[3+2*4]);
-
-					f = vd.getNormal()[i];
+				}
+				for(i=vd.getNormal().length-1;i>=0;i--){
+					Vector3f f = vd.getNormal()[i];
 					Matrix4f mab = new Matrix4f(f);
 					mab.mult(rot);
 					normT[i] = new Vector3f(mab.m[3+0*4], mab.m[3+1*4], mab.m[3+2*4]);
@@ -526,7 +531,7 @@ public class Main {
 		normalBuffer.rewind();
 		triangleBuffer.rewind();
 		long t4 = System.currentTimeMillis();
-		System.out.println(t4-t3);
+		//System.out.println(t4-t3);
 
 		/** set kernel data*/
 		
