@@ -202,7 +202,7 @@ public class Main {
 	    												  +devices.get(0).getInfoSizeArray(CL10.CL_DEVICE_MAX_WORK_ITEM_SIZES)[1]+" / "
 	    											      +devices.get(0).getInfoSizeArray(CL10.CL_DEVICE_MAX_WORK_ITEM_SIZES)[2]);
 	    
-	    programLoc[0] = "src/com/se/test/kernels/fragmentShaderTest.cls";
+	    programLoc[0] = "src/com/se/test/kernels/fragmentShaderTestIntel.cls";
 	    programLoc[1] = "src/com/se/test/kernels/vertexShader.cls";
 
 	    boolean err = false;

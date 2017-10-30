@@ -37,10 +37,10 @@ void matMult(float* m2, float* m, float* m1){
 __kernel void render(
 __global __read_only float* x1A, 
 __global __read_only float* rA, 
-__constant __read_only float* normal,
+__global __read_only float* normal,
 __constant __read_only float* camMatrix,
 __constant __read_only float* lp,
-__constant __read_only int* textures,
+__global __read_only int* textures,
 __write_only image2d_t result,
 __global float* zBuffer){
 
