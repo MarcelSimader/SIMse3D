@@ -97,7 +97,7 @@ public class Main {
 	private static long dt, dt1;
 	private static int amount, amount1;
 
-	public static void main(String[] args) throws Exception {
+	public static void main(String[] args) {
 		/** setup SIMMain and frame*/
 		sim = new SIMMain("Test", (Thread thread) -> update(thread), (Thread thread, Graphics graphics) -> render(thread, graphics));
 		sim.setStepTimeSeconds(0.01f);
@@ -123,7 +123,11 @@ public class Main {
 		//sim.addGUIElement(panel);
 		
 		/** init OpenCL*/
-		initOpenCL();
+		try {
+			initOpenCL();
+		} catch (Exception e1) {
+			e1.printStackTrace();
+		}
 		
 		/** load textures*/
 		tex = new Texture[3];
@@ -159,7 +163,7 @@ public class Main {
 		vertexDataArray[1].setPosition(new Vector3f(0,-2,0));
 		vertexDataArray[1].setScale(new Vector3f(1,1,1));*/
 		
-		vertexDataArray[1] = OBJLoader.loadObj("src/res/smooth.obj", true);
+		vertexDataArray[1] = OBJLoader.loadObj("src/res/teapot.obj", false);
 		//vertexDataArray[1].setScale(new Vector3f(1,1,1));
 		//vertexDataArray[1].setPosition(new Vector3f(0,-0.5,2));
 		
@@ -175,6 +179,7 @@ public class Main {
 		
 		/** setup perspective matrix*/
 		proj.perspective(sim.getDimension().getX()/sim.getDimension().getY(), 70f, 1000f, 10f);
+		//proj.orthographic(-10,-10, -10, 10, 100, 0.1f);
 		
 		/** start simse*/
 		sim.start();
@@ -199,17 +204,19 @@ public class Main {
 	    
 	    programLoc[0] = "src/com/se/test/kernels/fragmentShaderTest.cls";
 	    programLoc[1] = "src/com/se/test/kernels/vertexShader.cls";
+
 	    boolean err = false;
 	    for(int i=0;i<1;i++){
 		    program[i] = CL10.clCreateProgramWithSource(context, KernelLoader.loadKernel(programLoc[i]), null);
 		    CL10.clBuildProgram(program[i], devices.get(0), "", null);
+		    System.out.println("s");
 		    String log = program[i].getBuildInfoString(devices.get(0), CL10.CL_PROGRAM_BUILD_LOG);
 		    if(log.length()>1){
 			    System.err.println("\n---------------------------------------------BUILD LOG--------------------------------------------------------");
 			    System.err.print("Kernel: [" +programLoc[i].substring("src/com/se/test/kernels/".length(), programLoc[i].length())+ "]\n\n");
 				System.err.println(log);
 				System.err.println("----------------------------------------------------------------------------------------------------------------\n");
-				err=true;
+				//err=true;
 		    }
 	    }
 	    if(err){
@@ -218,7 +225,7 @@ public class Main {
 		
 		CLImageFormat format = new CLImageFormat(CL10.CL_INTENSITY, CL10.CL_UNORM_INT8);
 		resultColorM = CLMem.createImage2D(context, CL10.CL_MEM_READ_ONLY | CL10.CL_MEM_COPY_HOST_PTR, format, (long)(sim.getDimension().getX()/res), (long)(sim.getDimension().getY()/res), (long)(0), null, null);
-		resultColorBuffer = BufferUtils.createIntBuffer((int) ((sim.getDimension().getX()*(int)sim.getDimension().getY())/res));
+		resultColorBuffer = BufferUtils.createIntBuffer((int) ((sim.getDimension().getX()/res)*(sim.getDimension().getY()/res)));
 	}
 	
 	private static void kInput(int t, SIMKeyEvent k){
@@ -276,12 +283,13 @@ public class Main {
 		if(isQDown){rotation.sub(new Vector2f(transSpeed,0));}
 		if(isEDown){rotation.add(new Vector2f(transSpeed,0));}
 		
-		///vertexDataArray[0].setPosition(new Vector3f(Math.sin(sim.getTicks()*0.01f),0,Math.cos((sim.getTicks()*0.01f))));
-		//vertexDataArray[1].setScale(new Vector3f(1f,Math.sin(sim.getTicks()*0.01f),1f));
+		//vertexDataArray[0].setPosition(new Vector3f(Math.sin(sim.getTicks()*0.01f),0,Math.cos((sim.getTicks()*0.01f))));
+		//vertexDataArray[0].setScale(new Vector3f(1f,Math.sin(sim.getTicks()*0.01f),1f));
 		//vertexDataArray[0].setRotation(new Vector3f(Math.sin(sim.getTicks()*0.01f),Math.cos(sim.getTicks()*0.01f),Math.sin(sim.getTicks()*0.01f)));
 	}
 	
 	private static void render(Thread t, Graphics g){
+		
 		/** fill screen with white - set color to black*/
 		fillScreen(g, sim.getDimension(), Color.black);
 		
@@ -392,7 +400,6 @@ public class Main {
 					mab.mult(rot);
 					normT[i] = new Vector3f(mab.m[3+0*4], mab.m[3+1*4], mab.m[3+2*4]);
 				}
-				
 				//CREATE TRIANGLES________________________________________________________________________________________________________
 				
 				for(i=vd.getvIndicies().length-1;i>=0;i--){
@@ -549,7 +556,7 @@ public class Main {
 			lightPositionMem = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, lightPosBuffer, errB); Util.checkCLError(errB.get(0));
 			textureMem = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, textureBuffer, errB); Util.checkCLError(errB.get(0));
 			resultColorM = CLMem.createImage2D(context, CL10.CL_MEM_WRITE_ONLY, format, (long)(sim.getDimension().getX()/res), (long)(sim.getDimension().getY()/res), (long)(0), null, errB);Util.checkCLError(errB.get(0));
-			CLMem zBufferMem = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, BufferUtils.createFloatBuffer((int)((sim.getDimension().getX()/res)*(sim.getDimension().getX()/res))), errB); Util.checkCLError(errB.get(0));
+			CLMem zBufferMem = CL10.clCreateBuffer(context, CL10.CL_MEM_WRITE_ONLY | memPTR, BufferUtils.createFloatBuffer((int)((sim.getDimension().getX()/res)*(sim.getDimension().getY()/res))), errB); Util.checkCLError(errB.get(0));
 	
 			kernel[0] = CL10.clCreateKernel(program[0], "render", errB); Util.checkCLError(errB.get(0));
 	
@@ -586,6 +593,7 @@ public class Main {
 	
 	
 			CL10.clReleaseMemObject(triangleMem);
+			CL10.clReleaseMemObject(viewMem);
 			CL10.clReleaseMemObject(normalMem);
 			CL10.clReleaseMemObject(infoMem);
 			CL10.clReleaseMemObject(lightPositionMem);

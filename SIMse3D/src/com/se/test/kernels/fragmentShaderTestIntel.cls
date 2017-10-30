@@ -35,8 +35,8 @@ void matMult(float* m2, float* m, float* m1){
 }
 
 __kernel void render(
-__constant __read_only float* x1A, 
-__constant __read_only float* rA, 
+__global __read_only float* x1A, 
+__global __read_only float* rA, 
 __constant __read_only float* normal,
 __constant __read_only float* camMatrix,
 __constant __read_only float* lp,

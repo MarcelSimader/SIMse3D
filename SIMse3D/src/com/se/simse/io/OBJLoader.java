@@ -104,9 +104,9 @@ public class OBJLoader {
 		if(importUV){
 			vP = 0;
 			for(Vector3f uvCoord : uv){
-				uvArray[vP] = (uvCoord.multN(64f));
-				float u = Math.min(Math.max(64-uvArray[vP].getX(),0),64);
-				float v = Math.min(Math.max(64-uvArray[vP].getY(),0),64);
+				uvArray[vP] = (uvCoord.multN(256));
+				float u = Math.min(Math.max(uvArray[vP].getX(),0),256);
+				float v = Math.min(Math.max(256-uvArray[vP].getY(),0),256);
 				uvArray[vP] = new Vector3f(u,v,0);
 				vP++;
 			}
